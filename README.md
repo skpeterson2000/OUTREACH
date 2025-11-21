@@ -1,12 +1,15 @@
-# Home Care EHR System
+# OUTREACH EHR System
 
-A comprehensive Electronic Health Record system designed specifically for home healthcare nursing, with specialized assessment modules for various clinical specialties.
+A comprehensive Electronic Health Record system designed for multi-level care environments including home healthcare, assisted living facilities (ALF), memory care, skilled nursing facilities (SNF), and acute care settings.
 
 ## Overview
 
-This EHR supports:
-- **Medication Management**: MAR, reconciliation, PRN tracking
+This enterprise-grade EHR supports:
+- **Medication Management**: MAR with hold/resume capabilities, medication reconciliation, PRN tracking, overdue alerts
+- **Adverse Drug Reaction (ADR) Surveillance**: Real-time monitoring and pharmacist collaboration
+- **Patient Care Documentation**: Visit notes, assessments, care plans
 - **Wound Care**: Comprehensive wound assessment and tracking
+- **Billing & Revenue Cycle**: Medicare/Medicaid billing codes, visit documentation for reimbursement, ICD-10/CPT coding
 - **Specialty Assessments**:
   - Burn evaluation (Rule of 8s)
   - Respiratory assessments
@@ -15,6 +18,14 @@ This EHR supports:
   - Pain management
   - Fall risk assessment
   - And more...
+
+## Care Settings Supported
+
+- **Home Healthcare**: Skilled nursing visits, medication management, chronic disease management
+- **Assisted Living Facilities (ALF)**: Daily medication administration, wellness checks, care coordination
+- **Memory Care**: Specialized dementia/Alzheimer's documentation, behavioral tracking, safety monitoring
+- **Skilled Nursing Facilities (SNF)**: Comprehensive nursing care, rehabilitation tracking, discharge planning
+- **Hospice & Palliative Care**: Comfort measures, symptom management, advance directive documentation
 
 ## Architecture
 
@@ -100,14 +111,62 @@ See individual setup instructions in:
 
 ## Development Roadmap
 
-- [x] Project initialization
-- [ ] Core database schema
-- [ ] Authentication system
-- [ ] Medication management
-- [ ] Wound care module
-- [ ] Specialty assessments
-- [ ] Frontend dashboard
-- [ ] Reporting and analytics
+### Completed ✅
+- [x] Project initialization with Flask backend and React frontend
+- [x] SQLAlchemy database models and relationships
+- [x] JWT authentication with role-based access control (RN, LPN, Pharmacist, Admin)
+- [x] Patient management and demographics
+- [x] Medication Administration Record (MAR) with scheduling
+- [x] Medication hold/resume functionality
+- [x] Overdue medication tracking with configurable grace periods
+- [x] Adverse Drug Reaction (ADR) surveillance system
+- [x] Pharmacist collaboration workflow
+- [x] Comprehensive audit logging
+
+### In Progress 🔨
+- [ ] Patient detail page (frontend routing issue)
+- [ ] Visit documentation interface
+- [ ] Medication reconciliation workflow
+
+### Planned Features 📋
+
+#### Revenue Cycle Management
+- [ ] **Billing Module**
+  - Visit-based billing with time tracking
+  - ICD-10 diagnosis code integration
+  - CPT/HCPCS procedure codes
+  - Medicare/Medicaid billing forms (UB-04, CMS-1500)
+  - Commercial insurance claim generation
+- [ ] **Revenue Cycle Dashboard**
+  - Unbilled visits tracking
+  - Claims submission status
+  - Payment posting and reconciliation
+  - Denial management workflow
+- [ ] **Compliance Reporting**
+  - OASIS documentation for home health (required for Medicare)
+  - MDS 3.0 for skilled nursing facilities
+  - Regulatory compliance alerts
+
+#### Clinical Features
+- [ ] Wound care assessment module
+- [ ] Specialty assessments (burns, respiratory, cardiac, neuro)
+- [ ] Care plan builder with nursing diagnoses
+- [ ] Clinical decision support alerts
+- [ ] Lab result integration and trending
+
+#### Administrative Features
+- [ ] Schedule management for nursing staff
+- [ ] Mileage tracking for home visits
+- [ ] Facility census and bed management (ALF/SNF)
+- [ ] Quality metrics dashboard (readmission rates, infection rates, falls)
+- [ ] Reporting and analytics engine
+
+#### Advanced Features
+- [ ] Electronic prescribing (eRx) integration
+- [ ] HL7/FHIR interface for hospital EMR connectivity
+- [ ] Mobile app for field nurses
+- [ ] Family portal for care coordination
+- [ ] Telehealth visit documentation
 
 ## License
 
