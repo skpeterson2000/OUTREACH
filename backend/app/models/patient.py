@@ -133,6 +133,10 @@ class Patient(db.Model):
             'is_hospice': self.is_hospice,
             'code_status': self.code_status,
             'comfort_measures_only': self.comfort_measures_only,
+            'admission_date': self.admission_date.isoformat() if self.admission_date else None,
+            'primary_diagnosis': self.primary_diagnosis,
+            'secondary_diagnoses': self.secondary_diagnoses,
+            'allergies': self.allergies,
             'created_at': self.created_at.isoformat()
         }
         
@@ -142,9 +146,10 @@ class Patient(db.Model):
                 'address_line1': self.address_line1,
                 'city': self.city,
                 'state': self.state,
-                'allergies': self.allergies,
-                'code_status': self.code_status,
-                'primary_diagnosis': self.primary_diagnosis
+                'zip_code': self.zip_code,
+                'emergency_contact_name': self.emergency_contact_name,
+                'emergency_contact_relationship': self.emergency_contact_relationship,
+                'emergency_contact_phone': self.emergency_contact_phone
             })
         
         return data

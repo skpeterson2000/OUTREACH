@@ -62,6 +62,7 @@ export default function PatientDetail() {
   const [tabValue, setTabValue] = useState(0)
 
   useEffect(() => {
+    console.log('PatientDetail mounted, id:', id)
     if (id) {
       loadPatientData(parseInt(id))
     }
@@ -69,6 +70,7 @@ export default function PatientDetail() {
 
   const loadPatientData = async (patientId: number) => {
     try {
+      console.log('Loading patient data for ID:', patientId)
       setLoading(true)
       setError('')
       
@@ -78,11 +80,13 @@ export default function PatientDetail() {
         adrApi.getActiveAlerts({ patient_id: patientId }),
       ])
 
+      console.log('Patient data loaded:', patientRes.data)
       setPatient(patientRes.data.data)
       // Medications endpoint returns { status, data, count } directly
       setMedications(Array.isArray(medsRes.data.data) ? medsRes.data.data : (medsRes.data as any) || [])
       setAlerts(alertsRes.data.data || alertsRes.data || [])
     } catch (err: any) {
+      console.error('Error loading patient data:', err)
       setError(err.response?.data?.message || 'Failed to load patient data')
     } finally {
       setLoading(false)
