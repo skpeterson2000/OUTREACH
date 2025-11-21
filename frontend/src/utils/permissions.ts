@@ -10,7 +10,7 @@ export type UserRole = 'RN' | 'LPN' | 'Pharmacist' | 'Admin' | 'CNA' | 'HHA' | '
 export const LICENSED_ROLES: UserRole[] = ['RN', 'LPN', 'Admin']
 
 /**
- * Staff who can modify medication orders (hold/resume/discontinue)
+ * Staff who can modify medication orders (add/edit/hold/resume/discontinue per MD orders)
  */
 export const MEDICATION_MANAGEMENT_ROLES: UserRole[] = ['RN', 'LPN', 'Pharmacist', 'Admin']
 
@@ -33,7 +33,8 @@ export const canAdministerMedications = (userRole?: string): boolean => {
 }
 
 /**
- * Check if user has permission to manage medication orders (hold/resume/edit)
+ * Check if user has permission to manage medication orders (add/edit/hold/resume/discontinue)
+ * Nurses can add and modify medications per physician orders
  */
 export const canManageMedications = (userRole?: string): boolean => {
   if (!userRole) return false

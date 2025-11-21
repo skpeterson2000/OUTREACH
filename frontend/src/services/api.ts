@@ -69,10 +69,14 @@ export const medicationsApi = {
   getByPatient: (patientId: number) =>
     api.get<ApiResponse<Medication[]>>(`/patients/${patientId}/medications`),
   getById: (id: number) => api.get<ApiResponse<Medication>>(`/medications/${id}`),
-  create: (data: Partial<Medication>) => api.post<ApiResponse<Medication>>('/medications', data),
+  create: (patientId: number, data: Partial<Medication>) => 
+    api.post<ApiResponse<Medication>>(`/patients/${patientId}/medications`, data),
   update: (id: number, data: Partial<Medication>) =>
+    api.put<ApiResponse<Medication>>(`/medications/${id}`, data),
+  partialUpdate: (id: number, data: Partial<Medication>) =>
     api.patch<ApiResponse<Medication>>(`/medications/${id}`, data),
-  discontinue: (id: number) => api.put(`/medications/${id}/discontinue`),
+  discontinue: (id: number, data?: { reason?: string; discontinue_date?: string }) => 
+    api.post(`/medications/${id}/discontinue`, data || {}),
   hold: (id: number, data: { reason: string; expected_resume_date?: string }) =>
     api.post(`/medications/${id}/hold`, data),
   resume: (id: number) =>
@@ -82,10 +86,10 @@ export const medicationsApi = {
     api.get(`/patients/${patientId}/mar`, { params }),
   getDueMedications: (patientId: number, params?: { window_hours?: number; include_prn?: boolean }) =>
     api.get(`/patients/${patientId}/mar/due`, { params }),
-  getOverdueMedications: (params?: { grace_period_minutes?: number; patient_id?: number }) =>
+  getOverdue: (params?: { grace_period_minutes?: number; patient_id?: number }) =>
     api.get(`/mar/overdue`, { params }),
-  administerMedication: (patientId: number, medicationId: number, data: any) =>
-    api.post(`/patients/${patientId}/medications/${medicationId}/administer`, data),
+  administer: (medicationId: number, data: any) =>
+    api.post(`/medications/${medicationId}/administer`, data),
 }
 
 // Medication Administration Records (MAR)

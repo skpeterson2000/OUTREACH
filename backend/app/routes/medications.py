@@ -749,3 +749,237 @@ def resume_medication(medication_id):
         'data': medication.to_dict(),
         'message': 'Medication resumed'
     })
+
+
+@bp.route('/patients/<int:patient_id>/medications', methods=['POST'])
+@jwt_required()
+@require_role(['RN', 'LPN', 'Pharmacist', 'Admin'])
+def create_medication(patient_id):
+    """
+    Add a new medication to patient's MAR (per physician order).
+    RNs/LPNs can add medications to implement physician orders.
+    
+    Request body:
+    {
+        "medication_name": "Aspirin",
+        "generic_name": "Acetylsalicylic acid",
+        "dose": "81mg",
+        "route": "PO",
+        "frequency": "Daily",
+        "frequency_times_per_day": 1,
+        "time_of_day": "08:00",
+        "is_prn": false,
+        "prn_indication": null,
+        "prescribing_physician": "Dr. Smith",
+        "indication": "Cardiovascular prophylaxis",
+        "special_instructions": "Give with food",
+        "start_date": "2025-11-20",
+        "end_date": null,
+        "is_high_risk": false,
+        "requires_monitoring": false
+    }
+    """
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    patient = Patient.query.get_or_404(patient_id)
+    
+    # Check facility access
+    if patient.facility_id != user.facility_id and user.role != 'Admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    data = request.get_json()
+    
+    # Validate required fields
+    required = ['medication_name', 'dose', 'route', 'frequency', 'prescribing_physician']
+    for field in required:
+        if not data.get(field):
+            return jsonify({'error': f'{field} is required'}), 400
+    
+    # Create medication
+    medication = Medication(
+        patient_id=patient_id,
+        medication_name=data['medication_name'],
+        generic_name=data.get('generic_name'),
+        dose=data['dose'],
+        route=data['route'],
+        frequency=data['frequency'],
+        frequency_times_per_day=data.get('frequency_times_per_day'),
+        time_of_day=data.get('time_of_day'),
+        is_prn=data.get('is_prn', False),
+        prn_indication=data.get('prn_indication'),
+        prescribing_physician=data['prescribing_physician'],
+        indication=data.get('indication'),
+        special_instructions=data.get('special_instructions'),
+        start_date=datetime.fromisoformat(data['start_date']).date() if data.get('start_date') else datetime.utcnow().date(),
+        end_date=datetime.fromisoformat(data['end_date']).date() if data.get('end_date') else None,
+        status='active',
+        is_high_risk=data.get('is_high_risk', False),
+        requires_monitoring=data.get('requires_monitoring', False)
+    )
+    
+    db.session.add(medication)
+    
+    # Audit log
+    AuditLog.log_action(
+        user=user,
+        action='CREATE',
+        resource_type='Medication',
+        resource_id=None,
+        description=f'Added {medication.medication_name} {medication.dose} {medication.route} for patient {patient.medical_record_number}',
+        phi_accessed=True
+    )
+    
+    db.session.commit()
+    
+    return jsonify({
+        'status': 'success',
+        'data': medication.to_dict(),
+        'message': 'Medication added successfully'
+    }), 201
+
+
+@bp.route('/medications/<int:medication_id>', methods=['PUT'])
+@jwt_required()
+@require_role(['RN', 'LPN', 'Pharmacist', 'Admin'])
+def update_medication_full(medication_id):
+    """
+    Full update of medication details (per physician order modification).
+    RNs/LPNs can modify medications per new physician orders.
+    
+    Request body: Same as create_medication
+    """
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    medication = Medication.query.get_or_404(medication_id)
+    patient = Patient.query.get(medication.patient_id)
+    
+    # Check facility access
+    if patient.facility_id != user.facility_id and user.role != 'Admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    data = request.get_json()
+    changes = []
+    
+    # Update fields if provided
+    updatable_fields = {
+        'medication_name': str,
+        'generic_name': str,
+        'dose': str,
+        'route': str,
+        'frequency': str,
+        'frequency_times_per_day': int,
+        'time_of_day': str,
+        'is_prn': bool,
+        'prn_indication': str,
+        'prescribing_physician': str,
+        'indication': str,
+        'special_instructions': str,
+        'is_high_risk': bool,
+        'requires_monitoring': bool
+    }
+    
+    for field, field_type in updatable_fields.items():
+        if field in data:
+            old_value = getattr(medication, field)
+            new_value = data[field]
+            if old_value != new_value:
+                setattr(medication, field, new_value)
+                changes.append(f'{field}: {old_value} → {new_value}')
+    
+    # Handle dates
+    if 'start_date' in data:
+        new_date = datetime.fromisoformat(data['start_date']).date()
+        if medication.start_date != new_date:
+            changes.append(f'start_date: {medication.start_date} → {new_date}')
+            medication.start_date = new_date
+    
+    if 'end_date' in data:
+        new_date = datetime.fromisoformat(data['end_date']).date() if data['end_date'] else None
+        if medication.end_date != new_date:
+            changes.append(f'end_date: {medication.end_date} → {new_date}')
+            medication.end_date = new_date
+    
+    medication.updated_at = datetime.utcnow()
+    
+    # Audit log
+    AuditLog.log_action(
+        user=user,
+        action='UPDATE',
+        resource_type='Medication',
+        resource_id=medication_id,
+        description=f'Modified {medication.medication_name} for patient {patient.medical_record_number}: {"; ".join(changes)}',
+        phi_accessed=True
+    )
+    
+    db.session.commit()
+    
+    return jsonify({
+        'status': 'success',
+        'data': medication.to_dict(),
+        'message': 'Medication updated successfully',
+        'changes': changes
+    })
+
+
+@bp.route('/medications/<int:medication_id>/discontinue', methods=['POST'])
+@jwt_required()
+@require_role(['RN', 'LPN', 'Pharmacist', 'Admin'])
+def discontinue_medication(medication_id):
+    """
+    Discontinue a medication (per physician order).
+    This marks the medication as discontinued but DOES NOT delete it from the record.
+    All historical data is preserved per legal requirements.
+    
+    Request body:
+    {
+        "reason": "Per MD order - condition resolved",
+        "discontinue_date": "2025-11-20"  // optional, defaults to today
+    }
+    """
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    medication = Medication.query.get_or_404(medication_id)
+    patient = Patient.query.get(medication.patient_id)
+    
+    # Check facility access
+    if patient.facility_id != user.facility_id and user.role != 'Admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    if medication.status == 'discontinued':
+        return jsonify({'error': 'Medication is already discontinued'}), 400
+    
+    data = request.get_json() or {}
+    reason = data.get('reason', 'Discontinued per order')
+    
+    # Mark as discontinued
+    medication.status = 'discontinued'
+    medication.end_date = datetime.fromisoformat(data['discontinue_date']).date() if data.get('discontinue_date') else datetime.utcnow().date()
+    
+    # Add discontinuation note to instructions
+    if medication.special_instructions:
+        medication.special_instructions += f'\n\nDISCONTINUED {medication.end_date}: {reason}'
+    else:
+        medication.special_instructions = f'DISCONTINUED {medication.end_date}: {reason}'
+    
+    medication.updated_at = datetime.utcnow()
+    
+    # Audit log
+    AuditLog.log_action(
+        user=user,
+        action='UPDATE',
+        resource_type='Medication',
+        resource_id=medication_id,
+        description=f'Discontinued {medication.medication_name} for patient {patient.medical_record_number}: {reason}',
+        phi_accessed=True
+    )
+    
+    db.session.commit()
+    
+    return jsonify({
+        'status': 'success',
+        'data': medication.to_dict(),
+        'message': 'Medication discontinued successfully'
+    })
