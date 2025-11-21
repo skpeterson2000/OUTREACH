@@ -207,10 +207,42 @@ def seed_users(facility):
     )
     users.append(admin)
     
+    # CNA - Certified Nursing Assistant
+    cna = User(
+        facility_id=facility.id,
+        username="cna.maria",
+        email="maria.garcia@harmonyhealth.com",
+        password_hash=bcrypt.hashpw("password123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        first_name="Maria",
+        last_name="Garcia",
+        role="CNA",
+        license_number="CNA-IL-22222",
+        phone="555-1005",
+        status="active",
+        is_active=True
+    )
+    users.append(cna)
+    
+    # HHA - Home Health Aide
+    hha = User(
+        facility_id=facility.id,
+        username="hha.david",
+        email="david.martinez@harmonyhealth.com",
+        password_hash=bcrypt.hashpw("password123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        first_name="David",
+        last_name="Martinez",
+        role="HHA",
+        license_number="HHA-IL-33333",
+        phone="555-1006",
+        status="active",
+        is_active=True
+    )
+    users.append(hha)
+    
     db.session.add_all(users)
     db.session.commit()
     
-    print(f"✅ Created {len(users)} users:")
+    print(f"✅ Created {len(users)} users (ALL USE PASSWORD: password123):")
     for u in users:
         print(f"   - {u.first_name} {u.last_name} ({u.role}) - username: {u.username}")
     
