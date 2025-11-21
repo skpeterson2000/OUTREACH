@@ -42,6 +42,8 @@ import {
 } from '@mui/icons-material'
 import { Medication, ADRAlert } from '../types'
 import { medicationsApi, adrApi } from '../services/api'
+import { useAuthStore } from '../store/authStore'
+import { canAdministerMedications } from '../utils/permissions'
 
 interface MARAdministration {
   id: number
@@ -69,7 +71,11 @@ interface MARMedication extends Medication {
 export default function MAR() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const patientId = parseInt(id || '0')
+  
+  // Check if user has licensed privileges (can administer meds, hold/resume)
+  const isLicensedStaff = canAdministerMedications(user?.role)
 
   const [medications, setMedications] = useState<MARMedication[]>([])
   const [adrAlerts, setAdrAlerts] = useState<ADRAlert[]>([])
@@ -330,41 +336,47 @@ export default function MAR() {
           </TableCell>
           <TableCell>
             <Box display="flex" gap={1} flexWrap="wrap">
-              {med.status === 'held' ? (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="success"
-                  onClick={() => handleResumeMedication(med.id)}
-                >
-                  Unhold
-                </Button>
+              {isLicensedStaff ? (
+                med.status === 'held' ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="success"
+                    onClick={() => handleResumeMedication(med.id)}
+                  >
+                    Unhold
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<MedicationIcon />}
+                      onClick={() => handleAdministerClick(med)}
+                    >
+                      Give Now
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => handleHoldMedication(med)}
+                    >
+                      Hold
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleEditSchedule(med)}
+                    >
+                      Edit Schedule
+                    </Button>
+                  </>
+                )
               ) : (
-                <>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<MedicationIcon />}
-                    onClick={() => handleAdministerClick(med)}
-                  >
-                    Give Now
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="warning"
-                    onClick={() => handleHoldMedication(med)}
-                  >
-                    Hold
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleEditSchedule(med)}
-                  >
-                    Edit Schedule
-                  </Button>
-                </>
+                <Typography variant="body2" color="text.secondary">
+                  Licensed staff only
+                </Typography>
               )}
             </Box>
           </TableCell>
