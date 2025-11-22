@@ -36,6 +36,17 @@ def clear_data():
     """Clear existing data (for clean testing)."""
     print("🗑️  Clearing existing data...")
     
+    # Check for MAR records (legal documents)
+    mar_count = MedicationAdministration.query.count()
+    if mar_count > 0:
+        print(f"\n⚠️  WARNING: {mar_count} MAR (Medication Administration Records) will be deleted")
+        print("   MAR records are PERMANENT LEGAL DOCUMENTS in a production environment")
+        print("   In development/testing, this is OK. In production, NEVER delete MAR data.")
+        confirm = input("   Type 'DELETE MAR' to confirm: ")
+        if confirm != "DELETE MAR":
+            print("   ❌ Aborted - MAR data preserved")
+            return
+    
     # Order matters due to foreign key constraints
     PharmacistIntervention.query.delete()
     PharmacistCollaboration.query.delete()
@@ -1231,6 +1242,7 @@ def print_summary(org, facility, users, patients):
     print(f"   Patients: {len(patients)} (varying complexity)")
     print(f"   Active Medications: {Medication.query.filter_by(status='active').count()}")
     print(f"   Recent Visits: {Visit.query.count()}")
+    print(f"   MAR Records: {MedicationAdministration.query.count()} (PERMANENT LEGAL RECORD)")
     print(f"   ADR Alerts: {ADRAlert.query.count()}")
     print(f"   Reconciliations: {MedicationReconciliation.query.count()}")
     
@@ -1276,12 +1288,35 @@ def main():
         patients = seed_patients(facility1)
         medications = seed_medications(patients)
         visits = seed_visits_and_vitals(patients, rn)
+        
+        # IMPORTANT: Recent administrations (last 7 days) created by seed_medication_administrations
+        # Historical MAR data going back to patient admission is handled by seed_mar_history.py
+        # MAR records are PERMANENT legal documents and should never be deleted
         administrations = seed_medication_administrations(medications, patients, users)
+        
         observation, adr_alert = seed_adr_scenario(patients, rn, medications)
         reconciliation, discrepancies = seed_reconciliation_scenario(patients, rn)
         
         # Print summary
         print_summary(org, facility1, [rn, lpn, pharmacist, admin], patients)
+        
+        # Offer to create comprehensive MAR history
+        print("\n📋 MAR History:")
+        mar_count = MedicationAdministration.query.count()
+        if mar_count > 100:
+            print(f"   ✅ Comprehensive MAR history already exists ({mar_count} records)")
+            print(f"   📅 This is a PERMANENT LEGAL RECORD and will not be deleted")
+        else:
+            response = input(f"\n   Current MAR records: {mar_count} (last 7 days only)")
+            response = input(f"   Create comprehensive historical MAR data? (y/n): ")
+            if response.lower() == 'y':
+                print("\n   🏥 Creating comprehensive MAR history...")
+                print("   This will add realistic administration records going back to patient admission")
+                print("   (Typically adds ~800 additional records)")
+                import subprocess
+                import sys
+                subprocess.run([sys.executable, "seed_mar_history.py"])
+                print(f"\n   ✅ MAR history created - now {MedicationAdministration.query.count()} total records")
 
 
 if __name__ == "__main__":
