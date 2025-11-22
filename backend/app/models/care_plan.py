@@ -88,7 +88,21 @@ class NursingIntervention(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False, index=True)
     
     # Intervention details
-    intervention_type = db.Column(db.String(50), nullable=False, index=True)  # assessment, wound_care, education, monitoring, etc.
+    intervention_type = db.Column(db.String(50), nullable=False, index=True)  
+    # Types: assessment, wound_care, education, monitoring, catheter_care, tracheostomy_care, 
+    #        ostomy_care, tube_feeding, medication_management, skilled_nursing
+    # Common Examples:
+    #   - "Foley catheter care and assessment" (check for signs of infection, proper drainage)
+    #   - "Suprapubic catheter site care" (site assessment, dressing changes)
+    #   - "Tracheostomy care and suctioning" (site care, inner cannula cleaning, secretion management)
+    #   - "Braden Scale assessment" (pressure injury risk)
+    #   - "Morse Fall Scale" (fall risk assessment)
+    #   - "Wound care stage 2 sacral pressure injury" (dressing changes, healing assessment)
+    #   - "CHF symptom monitoring" (daily weights, edema, dyspnea assessment)
+    #   - "Diabetic foot assessment" (circulation, sensation, skin integrity)
+    #   - "Colostomy/ileostomy care" (appliance management, skin care, output assessment)
+    #   - "G-tube care and feeding" (site care, residual checks, feeding tolerance)
+    #   - "Vital signs monitoring" (BP, pulse, temp, O2 sat for chronic conditions)
     intervention_name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=False)
     rationale = db.Column(db.Text)  # Why this intervention is needed
