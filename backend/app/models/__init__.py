@@ -15,7 +15,13 @@ from app.models.adr_surveillance import (
     MedicationAdverseReaction,
     PatientObservation,
     ADRAlert,
+    ADRAlertAcknowledgment,
     ADRSurveillanceLog
+)
+from app.models.patient_safety_alerts import (
+    PatientSafetyAlert,
+    StaffSafetyAlertAcknowledgment,
+    create_safety_alert_from_adr
 )
 from app.models.wound import WoundAssessment
 # from app.models.specialty_assessment import SpecialtyAssessment  # Commented out due to syntax errors
@@ -38,7 +44,11 @@ __all__ = [
     'MedicationAdverseReaction',
     'PatientObservation',
     'ADRAlert',
+    'ADRAlertAcknowledgment',
     'ADRSurveillanceLog',
+    'PatientSafetyAlert',
+    'StaffSafetyAlertAcknowledgment',
+    'create_safety_alert_from_adr',
     'Assessment',
     'VitalSigns',
     'WoundAssessment',

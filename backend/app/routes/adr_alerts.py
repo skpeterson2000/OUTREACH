@@ -359,59 +359,154 @@ def get_adr_alert_details(alert_id):
 
 @bp.route('/adr-alerts/<int:alert_id>/acknowledge', methods=['POST'])
 @jwt_required()
-@require_role(['RN', 'LPN', 'Admin'])
+@require_role(['RN', 'LPN', 'TMA', 'Admin'])  # TMA can acknowledge alerts for meds they administer
 def acknowledge_alert(alert_id):
     """
-    Acknowledge ADR alert.
+    Acknowledge ADR alert (multi-user, shift-based).
+    
+    Each staff member must independently acknowledge each active alert.
+    Acknowledgments expire after 12 hours (shift change).
     
     Request body:
     {
-        "notes": "Aware of alert, monitoring patient closely. Will notify provider if symptoms worsen."
+        "action": "ACKNOWLEDGED" or "HOLD_MEDICATION",
+        "verified_reaction_awareness": true,
+        "verified_monitoring_parameters": true,
+        "verified_escalation_criteria": true,
+        "notes": "Aware of alert, monitoring patient closely...",
+        "monitoring_plan": "Will check BP q4h, observe for confusion",
+        
+        // If action = "HOLD_MEDICATION":
+        "hold_reason": "Patient symptomatic, medication may be contributing",
+        "hold_duration": "24 hours or until symptoms resolve",
+        "provider_notified": true,
+        "provider_notified_at": "2025-11-21T14:30:00",
+        "hold_order_obtained": true
     }
     """
+    from app.models import ADRAlertAcknowledgment
+    
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     
+    print(f"🔔 ACKNOWLEDGE ALERT {alert_id}")
+    print(f"   User: {user.first_name} {user.last_name} ({user.role})")
+    
     alert = ADRAlert.query.get_or_404(alert_id)
+    print(f"   Alert Status: {alert.status}")
+    print(f"   Alert Facility: {alert.facility_id}, User Facility: {user.facility_id}")
     
     # Check access
     if alert.facility_id != user.facility_id and user.role != 'Admin':
+        print("   ❌ Access denied - facility mismatch")
         return jsonify({'error': 'Access denied'}), 403
     
-    if alert.status not in ['NEW', 'ACKNOWLEDGED']:
-        return jsonify({'error': f'Cannot acknowledge alert with status {alert.status}'}), 400
+    if not alert.is_active:
+        print(f"   ❌ Cannot acknowledge - alert not active: {alert.status}")
+        return jsonify({'error': f'Alert is not active (status: {alert.status})'}), 400
     
     data = request.get_json() or {}
+    print(f"   Request data: {data}")
+    
+    # Validate required fields
+    action = data.get('action', 'ACKNOWLEDGED')
+    if action not in ['ACKNOWLEDGED', 'HOLD_MEDICATION']:
+        return jsonify({'error': 'Invalid action. Must be ACKNOWLEDGED or HOLD_MEDICATION'}), 400
+    
+    # Require all three safety verifications
+    if not all([
+        data.get('verified_reaction_awareness'),
+        data.get('verified_monitoring_parameters'),
+        data.get('verified_escalation_criteria')
+    ]):
+        return jsonify({
+            'error': 'All safety verifications required',
+            'message': 'You must verify reaction awareness, monitoring parameters, and escalation criteria'
+        }), 400
+    
+    # If holding medication, require additional fields
+    if action == 'HOLD_MEDICATION':
+        if not data.get('hold_reason'):
+            return jsonify({'error': 'hold_reason required when holding medication'}), 400
+        if not data.get('provider_notified'):
+            return jsonify({'error': 'Provider must be notified when holding medication'}), 400
     
     try:
-        alert.status = 'ACKNOWLEDGED'
-        alert.acknowledged_by_user_id = current_user_id
-        alert.acknowledged_at = datetime.utcnow()
+        # Check for existing valid acknowledgment by this user
+        existing = ADRAlertAcknowledgment.query.filter_by(
+            alert_id=alert_id,
+            user_id=current_user_id
+        ).order_by(ADRAlertAcknowledgment.acknowledged_at.desc()).first()
         
-        if data.get('notes'):
-            alert.investigation_notes = data['notes']
+        if existing and existing.is_valid:
+            print(f"   ℹ️ User already has valid acknowledgment (expires: {existing.expires_at})")
+            return jsonify({
+                'status': 'success',
+                'data': existing.to_dict(),
+                'message': f'You have already acknowledged this alert (valid until {existing.expires_at.strftime("%H:%M")})',
+                'already_acknowledged': True
+            })
+        
+        # Create new acknowledgment
+        acknowledgment = ADRAlertAcknowledgment(
+            alert_id=alert_id,
+            user_id=current_user_id,
+            facility_id=user.facility_id,
+            action_taken=action,
+            acknowledged_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(hours=12),  # Expires after shift
+            verified_reaction_awareness=data.get('verified_reaction_awareness', False),
+            verified_monitoring_parameters=data.get('verified_monitoring_parameters', False),
+            verified_escalation_criteria=data.get('verified_escalation_criteria', False),
+            notes=data.get('notes'),
+            monitoring_plan=data.get('monitoring_plan')
+        )
+        
+        # If holding medication
+        if action == 'HOLD_MEDICATION':
+            acknowledgment.hold_reason = data.get('hold_reason')
+            acknowledgment.hold_duration = data.get('hold_duration')
+            acknowledgment.provider_notified = data.get('provider_notified', False)
+            if data.get('provider_notified_at'):
+                acknowledgment.provider_notified_at = datetime.fromisoformat(data['provider_notified_at'].replace('Z', '+00:00'))
+            acknowledgment.hold_order_obtained = data.get('hold_order_obtained', False)
+        
+        db.session.add(acknowledgment)
+        
+        # Update alert status if first acknowledgment
+        if alert.status == 'NEW':
+            alert.status = 'ACKNOWLEDGED'
+            alert.acknowledged_by_user_id = current_user_id
+            alert.acknowledged_at = datetime.utcnow()
         
         # Audit log
         AuditLog.log_action(
-            user_id=current_user_id,
-            action='UPDATE',
-            resource_type='ADRAlert',
-            resource_id=alert.id,
-            details=f'Acknowledged ADR alert for patient {alert.patient_id}',
-            contains_phi=True,
-            facility_id=user.facility_id
+            user=user,
+            action='CREATE',
+            resource_type='ADRAlertAcknowledgment',
+            resource_id=acknowledgment.id,
+            patient_id=alert.patient_id,
+            description=f'{action} ADR alert #{alert_id} for patient {alert.patient_id}',
+            phi_accessed=True,
+            request=request
         )
         
         db.session.commit()
         
+        print(f"   ✅ Acknowledgment created (expires: {acknowledgment.expires_at})")
+        
         return jsonify({
             'status': 'success',
-            'data': alert.to_dict(),
-            'message': 'Alert acknowledged'
+            'data': {
+                'acknowledgment': acknowledgment.to_dict(),
+                'alert': alert.to_dict()
+            },
+            'message': f'Alert {action.lower().replace("_", " ")} successfully. Valid until shift end.'
         })
         
     except Exception as e:
         db.session.rollback()
+        print(f"   ❌ Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -554,6 +649,74 @@ def notify_provider(alert_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/adr-alerts/check-patient-acknowledgments/<int:patient_id>', methods=['GET'])
+@jwt_required()
+@require_role(['RN', 'LPN', 'TMA', 'Admin'])
+def check_patient_acknowledgments(patient_id):
+    """
+    Check if current user has acknowledged all active ADR alerts for a patient.
+    
+    Must be called before administering medications to ensure staff awareness.
+    Returns list of unacknowledged alerts (if any) and expired acknowledgments.
+    """
+    from app.models import ADRAlertAcknowledgment
+    
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    # Get all active alerts for this patient
+    active_alerts = ADRAlert.query.filter_by(
+        patient_id=patient_id,
+        facility_id=user.facility_id
+    ).filter(
+        ADRAlert.status.in_(['NEW', 'ACKNOWLEDGED', 'INVESTIGATING'])
+    ).all()
+    
+    if not active_alerts:
+        return jsonify({
+            'status': 'success',
+            'can_administer': True,
+            'message': 'No active ADR alerts for this patient',
+            'active_alerts': [],
+            'unacknowledged_alerts': [],
+            'expired_acknowledgments': []
+        })
+    
+    # Check acknowledgments for each alert
+    unacknowledged = []
+    expired = []
+    valid_acks = []
+    
+    for alert in active_alerts:
+        # Get user's most recent acknowledgment
+        ack = ADRAlertAcknowledgment.query.filter_by(
+            alert_id=alert.id,
+            user_id=current_user_id
+        ).order_by(ADRAlertAcknowledgment.acknowledged_at.desc()).first()
+        
+        if not ack:
+            unacknowledged.append(alert.to_dict())
+        elif ack.is_expired:
+            expired.append({
+                'alert': alert.to_dict(),
+                'expired_acknowledgment': ack.to_dict()
+            })
+        else:
+            valid_acks.append(ack.to_dict())
+    
+    can_administer = len(unacknowledged) == 0 and len(expired) == 0
+    
+    return jsonify({
+        'status': 'success',
+        'can_administer': can_administer,
+        'message': 'All alerts acknowledged' if can_administer else 'Some alerts require acknowledgment',
+        'active_alerts': [a.to_dict() for a in active_alerts],
+        'unacknowledged_alerts': unacknowledged,
+        'expired_acknowledgments': expired,
+        'valid_acknowledgments': valid_acks
+    })
 
 
 @bp.route('/adr-alerts/<int:alert_id>/resolve', methods=['POST'])

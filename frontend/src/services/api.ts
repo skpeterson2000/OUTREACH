@@ -92,7 +92,7 @@ export const medicationsApi = {
     api.post(`/medications/${medicationId}/administer`, data),
 }
 
-// Medication Administration Records (MAR)
+  // Medication Administration Records (MAR)
 export const marApi = {
   getScheduled: (params?: { patient_id?: number; date?: string }) =>
     api.get<ApiResponse<MedicationAdministration[]>>('/mar/scheduled', { params }),
@@ -104,9 +104,13 @@ export const marApi = {
     api.put(`/mar/${administrationId}/late`, { reason }),
   markRefused: (administrationId: number, reason: string) =>
     api.put(`/mar/${administrationId}/refused`, { reason }),
-}
-
-// Visits
+  administerMedication: (patientId: number, medicationId: number, data: any) =>
+    api.post(`/medications/${medicationId}/administer`, data),
+  getOverdueMedications: (params?: { patient_id?: number; grace_period_minutes?: number }) =>
+    api.get('/mar/overdue', { params }),
+  getMedicationADRAlerts: (medicationId: number) =>
+    api.get(`/medications/${medicationId}/adr-alerts`),
+}// Visits
 export const visitsApi = {
   getAll: (filters?: any) => api.get<PaginatedResponse<Visit>>('/visits', { params: filters }),
   getById: (id: number) => api.get<ApiResponse<Visit>>(`/visits/${id}`),
@@ -133,13 +137,16 @@ export const adrApi = {
   getActiveAlerts: (params?: { patient_id?: number; facility_id?: number; status?: string }) =>
     api.get<ApiResponse<ADRAlert[]>>('/adr-alerts', { params }),
   getAlertById: (id: number) => api.get<ApiResponse<ADRAlert>>(`/adr-alerts/${id}`),
-  acknowledgeAlert: (id: number, data: { notes: string }) =>
+  acknowledgeAlert: (id: number, data: any) =>
     api.post(`/adr-alerts/${id}/acknowledge`, data),
   updateAlertStatus: (id: number, status: string, notes?: string) =>
     api.put(`/adr-alerts/${id}/status`, { status, notes }),
   // Patient-specific alerts
   getPatientAlerts: (patientId: number, params?: { status?: string }) =>
     api.get<ApiResponse<ADRAlert[]>>(`/patients/${patientId}/adr-alerts`, { params }),
+  // Check if user has acknowledged all alerts for patient
+  checkPatientAcknowledgments: (patientId: number) =>
+    api.get(`/adr-alerts/check-patient-acknowledgments/${patientId}`),
   // Proactive guidance for medication pass
   getMedicationRisks: (medicationId: number) =>
     api.get<ApiResponse<any>>(`/medications/${medicationId}/adr-risks`),

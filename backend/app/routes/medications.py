@@ -237,12 +237,53 @@ def get_overdue_medications():
     })
 
 
+@bp.route('/medications/<int:medication_id>/adr-alerts', methods=['GET'])
+@jwt_required()
+def get_medication_adr_alerts(medication_id):
+    """
+    Get active ADR alerts for a specific medication.
+    
+    Shows any active adverse reaction surveillance alerts that staff should
+    be aware of before administering this medication.
+    """
+    from app.models import ADRAlert
+    
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    medication = Medication.query.get_or_404(medication_id)
+    patient = Patient.query.get(medication.patient_id)
+    
+    if patient.facility_id != user.facility_id and user.role != 'Admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Get active alerts for this medication
+    alerts = ADRAlert.query.filter_by(
+        medication_id=medication_id,
+        facility_id=user.facility_id
+    ).filter(
+        ADRAlert.status.in_(['NEW', 'ACKNOWLEDGED', 'INVESTIGATING'])
+    ).order_by(ADRAlert.created_at.desc()).all()
+    
+    return jsonify({
+        'status': 'success',
+        'medication_id': medication_id,
+        'medication_name': medication.medication_name,
+        'patient_id': patient.id,
+        'patient_name': f"{patient.first_name} {patient.last_name}",
+        'active_alerts': [alert.to_dict() for alert in alerts],
+        'alert_count': len(alerts)
+    })
+
+
 @bp.route('/medications/<int:medication_id>/administer', methods=['POST'])
 @jwt_required()
-@require_role(['RN', 'LPN', 'Admin'])
+@require_role(['RN', 'LPN', 'TMA', 'Admin'])  # TMA can also administer
 def administer_medication(medication_id):
     """
     Document medication administration.
+    
+    SAFETY: Checks for ADR alerts before allowing administration.
     
     Request body:
     {
@@ -255,9 +296,12 @@ def administer_medication(medication_id):
         "administration_site": "PO",
         "prn_reason_given": "Patient c/o pain 7/10",
         "notes": "Patient tolerated well",
-        "witness_id": null
+        "witness_id": null,
+        "adr_alerts_acknowledged": true  // Required if active alerts exist
     }
     """
+    from app.models import ADRAlert, ADRAlertAcknowledgment
+    
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     
@@ -269,6 +313,63 @@ def administer_medication(medication_id):
         return jsonify({'error': 'Access denied'}), 403
     
     data = request.get_json()
+    
+    # ⚠️ SAFETY CHECK: Verify ADR alert acknowledgments
+    if data.get('status') == 'given':  # Only check if actually administering
+        # Check for active ADR alerts for this patient
+        active_alerts = ADRAlert.query.filter_by(
+            patient_id=patient.id,
+            facility_id=user.facility_id
+        ).filter(
+            ADRAlert.status.in_(['NEW', 'ACKNOWLEDGED', 'INVESTIGATING'])
+        ).all()
+        
+        if active_alerts:
+            # Check if user has valid acknowledgments for ALL active alerts
+            unacknowledged = []
+            expired = []
+            held_meds = []
+            
+            for alert in active_alerts:
+                # Get user's most recent acknowledgment for this alert
+                ack = ADRAlertAcknowledgment.query.filter_by(
+                    alert_id=alert.id,
+                    user_id=current_user_id
+                ).order_by(ADRAlertAcknowledgment.acknowledged_at.desc()).first()
+                
+                if not ack:
+                    unacknowledged.append(alert.to_dict())
+                elif ack.is_expired:
+                    expired.append(alert.to_dict())
+                elif ack.action_taken == 'HOLD_MEDICATION' and alert.medication_id == medication_id:
+                    held_meds.append({
+                        'alert': alert.to_dict(),
+                        'hold_info': {
+                            'reason': ack.hold_reason,
+                            'duration': ack.hold_duration,
+                            'provider_notified': ack.provider_notified
+                        }
+                    })
+            
+            # If there are medications on hold, block administration
+            if held_meds:
+                return jsonify({
+                    'error': 'MEDICATION_ON_HOLD',
+                    'message': 'This medication is on hold due to ADR alert',
+                    'held_medications': held_meds,
+                    'action_required': 'Contact provider before administering. Medication hold must be lifted.'
+                }), 403
+            
+            # If there are unacknowledged or expired alerts, block administration
+            if unacknowledged or expired:
+                return jsonify({
+                    'error': 'ADR_ALERTS_NOT_ACKNOWLEDGED',
+                    'message': 'You must acknowledge all active ADR alerts before administering medications to this patient',
+                    'unacknowledged_alerts': unacknowledged,
+                    'expired_acknowledgments': expired,
+                    'total_active_alerts': len(active_alerts),
+                    'action_required': 'Review and acknowledge each ADR alert before proceeding'
+                }), 403
     
     # Validate required fields
     if not data.get('scheduled_time'):

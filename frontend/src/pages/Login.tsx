@@ -121,10 +121,13 @@ export default function Login() {
               </Box>
               <Box>
                 <Typography variant="caption" display="block" sx={{ fontWeight: 600 }}>
-                  Other Staff:
+                  Delegated & Support:
                 </Typography>
                 <Typography variant="caption" display="block">
                   • Admin: <strong>admin.mike</strong>
+                </Typography>
+                <Typography variant="caption" display="block">
+                  • TMA: <strong>tma.lisa</strong> 🩺
                 </Typography>
                 <Typography variant="caption" display="block">
                   • CNA: <strong>cna.maria</strong>
@@ -134,6 +137,9 @@ export default function Login() {
                 </Typography>
               </Box>
             </Box>
+            <Typography variant="caption" display="block" sx={{ mt: 1, fontStyle: 'italic', color: 'text.secondary' }}>
+              🩺 TMA (Trained Medication Assistant) = CNA with delegated medication administration privileges
+            </Typography>
           </Box>
         </Paper>
       </Box>

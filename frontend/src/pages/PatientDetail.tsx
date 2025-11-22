@@ -22,6 +22,11 @@ import {
   Alert,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material'
 import {
   ArrowBack as BackIcon,
@@ -34,6 +39,8 @@ import {
 } from '@mui/icons-material'
 import { patientsApi, medicationsApi, visitsApi, adrApi } from '../services/api'
 import type { Patient, Medication, Visit, ADRAlert } from '../types'
+import { useAuthStore } from '../store/authStore'
+import { canAcknowledgeADRAlerts } from '../utils/permissions'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -53,6 +60,8 @@ function TabPanel(props: TabPanelProps) {
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  
   const [patient, setPatient] = useState<Patient | null>(null)
   const [medications, setMedications] = useState<Medication[]>([])
   const [visits, setVisits] = useState<Visit[]>([])
@@ -60,35 +69,190 @@ export default function PatientDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tabValue, setTabValue] = useState(0)
+  const [acknowledgeDialogOpen, setAcknowledgeDialogOpen] = useState(false)
+  const [selectedAlert, setSelectedAlert] = useState<ADRAlert | null>(null)
+  const [acknowledgmentForm, setAcknowledgmentForm] = useState({
+    action: 'ACKNOWLEDGED' as 'ACKNOWLEDGED' | 'HOLD_MEDICATION',
+    verified_reaction_awareness: false,
+    verified_monitoring_parameters: false,
+    verified_escalation_criteria: false,
+    notes: '',
+    monitoring_plan: '',
+    hold_reason: '',
+    hold_duration: '',
+    provider_notified: false,
+  })
 
   useEffect(() => {
-    console.log('PatientDetail mounted, id:', id)
-    if (id) {
-      loadPatientData(parseInt(id))
+    console.log('🚀 PatientDetail: Component mounted')
+    console.log('🆔 PatientDetail: URL id parameter:', id)
+    console.log('🌐 PatientDetail: Current URL:', window.location.href)
+    
+    if (!id) {
+      console.error('❌ PatientDetail: No id parameter found in URL!')
+      setError('Patient ID not found in URL')
+      setLoading(false)
+      return
     }
+    
+    const patientId = parseInt(id)
+    if (isNaN(patientId)) {
+      console.error('❌ PatientDetail: Invalid patient ID:', id)
+      setError('Invalid patient ID')
+      setLoading(false)
+      return
+    }
+    
+    console.log('✅ PatientDetail: Valid patient ID, loading data for:', patientId)
+    loadPatientData(patientId)
   }, [id])
+
+  const handleAcknowledgeAlert = (alert: ADRAlert) => {
+    setSelectedAlert(alert)
+    setAcknowledgmentForm({
+      action: 'ACKNOWLEDGED',
+      verified_reaction_awareness: false,
+      verified_monitoring_parameters: false,
+      verified_escalation_criteria: false,
+      notes: '',
+      monitoring_plan: '',
+      hold_reason: '',
+      hold_duration: '',
+      provider_notified: false,
+    })
+    setAcknowledgeDialogOpen(true)
+  }
+
+  const handleAcknowledgeSubmit = async () => {
+    console.log('🔔 ACKNOWLEDGE SUBMIT - Starting...')
+    console.log('   Selected Alert:', selectedAlert)
+    console.log('   Current User:', user)
+    console.log('   Acknowledgment Form:', acknowledgmentForm)
+    
+    if (!selectedAlert) {
+      console.error('❌ No alert selected')
+      return
+    }
+    
+    // Validate required checkboxes
+    if (!acknowledgmentForm.verified_reaction_awareness || 
+        !acknowledgmentForm.verified_monitoring_parameters || 
+        !acknowledgmentForm.verified_escalation_criteria) {
+      console.warn('⚠️ Not all safety verifications checked')
+      alert('You must complete all three safety verifications before acknowledging this alert.')
+      return
+    }
+
+    // Validate HOLD_MEDICATION specific fields
+    if (acknowledgmentForm.action === 'HOLD_MEDICATION') {
+      if (!acknowledgmentForm.hold_reason || !acknowledgmentForm.hold_duration) {
+        alert('When holding a medication, you must provide a reason and duration.')
+        return
+      }
+      if (!acknowledgmentForm.provider_notified) {
+        alert('You must notify the provider when holding a medication due to an ADR alert.')
+        return
+      }
+    }
+
+    const payload = {
+      action: acknowledgmentForm.action,
+      verified_reaction_awareness: acknowledgmentForm.verified_reaction_awareness,
+      verified_monitoring_parameters: acknowledgmentForm.verified_monitoring_parameters,
+      verified_escalation_criteria: acknowledgmentForm.verified_escalation_criteria,
+      notes: acknowledgmentForm.notes || `Acknowledged by ${user?.first_name} ${user?.last_name} (${user?.role})`,
+      monitoring_plan: acknowledgmentForm.monitoring_plan || undefined,
+      hold_reason: acknowledgmentForm.action === 'HOLD_MEDICATION' ? acknowledgmentForm.hold_reason : undefined,
+      hold_duration: acknowledgmentForm.action === 'HOLD_MEDICATION' ? acknowledgmentForm.hold_duration : undefined,
+      provider_notified: acknowledgmentForm.action === 'HOLD_MEDICATION' ? acknowledgmentForm.provider_notified : undefined,
+    }
+    console.log('📤 Sending acknowledgment payload:', payload)
+
+    try {
+      console.log('📡 Calling API: acknowledgeAlert(', selectedAlert.id, ')')
+      const response = await adrApi.acknowledgeAlert(selectedAlert.id, payload)
+      console.log('✅ API Response:', response)
+      
+      // Close dialog first to prevent UI blocking
+      setAcknowledgeDialogOpen(false)
+      
+      // Show success message
+      if (acknowledgmentForm.action === 'HOLD_MEDICATION') {
+        alert(`✅ Alert acknowledged and medication HELD.\n\n⚠️ This medication is now on hold for ${acknowledgmentForm.hold_duration}.\n\nProvider has been notified. This acknowledgment is recorded in the patient's medical record.`)
+      } else {
+        alert(`✅ Alert acknowledged. This acknowledgment is recorded in the patient's medical record.\n\n⚠️ REMINDER: You must verify monitoring parameters before EACH medication administration.\n\n⏰ This acknowledgment expires after 12 hours (next shift).`)
+      }
+      
+      // Refresh patient data
+      console.log('🔄 Refreshing patient data...')
+      if (id) {
+        const patientId = parseInt(id)
+        if (!isNaN(patientId)) {
+          try {
+            await loadPatientData(patientId)
+            console.log('✅ Patient data refreshed successfully')
+          } catch (refreshError) {
+            console.error('❌ Failed to refresh patient data:', refreshError)
+            // Don't show error to user since acknowledgment succeeded
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ ACKNOWLEDGE FAILED:')
+      console.error('   Error:', error)
+      console.error('   Response:', error.response)
+      console.error('   Status:', error.response?.status)
+      console.error('   Data:', error.response?.data)
+      
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to acknowledge alert'
+      alert(`❌ Error: ${errorMsg}\n\nStatus: ${error.response?.status || 'unknown'}\nCheck console for details.`)
+    }
+  }
 
   const loadPatientData = async (patientId: number) => {
     try {
-      console.log('Loading patient data for ID:', patientId)
+      console.log('🔍 PatientDetail: Loading patient data for ID:', patientId)
       setLoading(true)
       setError('')
       
+      console.log('📡 PatientDetail: Fetching patient data...')
       const [patientRes, medsRes, alertsRes] = await Promise.all([
         patientsApi.getById(patientId),
         medicationsApi.getByPatient(patientId),
         adrApi.getActiveAlerts({ patient_id: patientId }),
       ])
 
-      console.log('Patient data loaded:', patientRes.data)
-      setPatient(patientRes.data.data)
+      console.log('✅ PatientDetail: Raw patient response:', patientRes)
+      console.log('✅ PatientDetail: Raw meds response:', medsRes)
+      console.log('✅ PatientDetail: Raw alerts response:', alertsRes)
+      
+      const patientData = patientRes.data.data || patientRes.data
+      console.log('👤 PatientDetail: Extracted patient data:', patientData)
+      
+      if (!patientData) {
+        console.error('❌ PatientDetail: No patient data in response!')
+        setError('Patient data not found')
+        return
+      }
+      
+      setPatient(patientData)
       // Medications endpoint returns { status, data, count } directly
-      setMedications(Array.isArray(medsRes.data.data) ? medsRes.data.data : (medsRes.data as any) || [])
-      setAlerts(alertsRes.data.data || alertsRes.data || [])
+      const medsData = Array.isArray(medsRes.data.data) ? medsRes.data.data : (medsRes.data as any) || []
+      console.log('💊 PatientDetail: Setting medications:', medsData)
+      setMedications(medsData)
+      
+      const alertsData = alertsRes.data.data || alertsRes.data || []
+      console.log('⚠️ PatientDetail: Setting alerts:', alertsData)
+      setAlerts(alertsData)
+      
+      console.log('✨ PatientDetail: All data loaded successfully')
     } catch (err: any) {
-      console.error('Error loading patient data:', err)
-      setError(err.response?.data?.message || 'Failed to load patient data')
+      console.error('❌ PatientDetail: Error loading patient data:', err)
+      console.error('❌ PatientDetail: Error response:', err.response)
+      console.error('❌ PatientDetail: Error message:', err.message)
+      setError(err.response?.data?.message || err.message || 'Failed to load patient data')
     } finally {
+      console.log('🏁 PatientDetail: Setting loading to false')
       setLoading(false)
     }
   }
@@ -224,15 +388,44 @@ export default function PatientDetail() {
         </Grid>
       </Grid>
 
-      {/* Active Alerts Banner */}
+      {/* Active Alerts Banner - CRITICAL SAFETY WARNING */}
       {alerts.length > 0 && (
-        <Alert severity="error" icon={<WarningIcon />} sx={{ mb: 3 }}>
-          <Typography variant="body2" fontWeight="medium">
-            ⚠️ {alerts.length} medication safety alert{alerts.length > 1 ? 's' : ''} requiring attention - 
-            <Button size="small" color="inherit" onClick={() => setTabValue(2)} sx={{ ml: 1 }}>
-              View Details
-            </Button>
-          </Typography>
+        <Alert 
+          severity="error" 
+          icon={<WarningIcon />} 
+          sx={{ 
+            mb: 3,
+            border: '3px solid',
+            borderColor: 'error.main',
+            backgroundColor: 'error.light',
+            '& .MuiAlert-message': { width: '100%' }
+          }}
+        >
+          <Box>
+            <Typography variant="h6" fontWeight="bold" color="error.dark" gutterBottom>
+              🚨 MEDICATION SAFETY ALERT - ACTION REQUIRED
+            </Typography>
+            <Typography variant="body1" fontWeight="medium" gutterBottom>
+              {alerts.length} active adverse drug reaction alert{alerts.length > 1 ? 's' : ''} for this patient
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              <strong>YOU MUST ACKNOWLEDGE ALL ALERTS BEFORE ADMINISTERING MEDICATIONS</strong>
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Button 
+                variant="contained" 
+                color="error" 
+                size="large"
+                onClick={() => setTabValue(1)}
+                sx={{ fontWeight: 'bold' }}
+              >
+                REVIEW & ACKNOWLEDGE ALERTS NOW
+              </Button>
+              <Typography variant="caption" sx={{ alignSelf: 'center', fontStyle: 'italic' }}>
+                This is required at the start of each shift and before giving any medications to this patient
+              </Typography>
+            </Box>
+          </Box>
         </Alert>
       )}
 
@@ -324,8 +517,8 @@ export default function PatientDetail() {
               Secondary Diagnoses
             </Typography>
             <Typography variant="body2">
-              {patient.secondary_diagnoses && patient.secondary_diagnoses.length > 0
-                ? patient.secondary_diagnoses.join(', ')
+              {patient.secondary_diagnoses && (Array.isArray(patient.secondary_diagnoses) ? patient.secondary_diagnoses.length > 0 : patient.secondary_diagnoses.length > 0)
+                ? (Array.isArray(patient.secondary_diagnoses) ? patient.secondary_diagnoses.join(', ') : patient.secondary_diagnoses)
                 : 'None'}
             </Typography>
           </Grid>
@@ -333,9 +526,9 @@ export default function PatientDetail() {
             <Typography variant="caption" color="text.secondary">
               Allergies
             </Typography>
-            <Typography variant="body2" color={patient.allergies && patient.allergies.length > 0 ? 'error.main' : 'text.primary'}>
-              {patient.allergies && patient.allergies.length > 0
-                ? patient.allergies.join(', ')
+            <Typography variant="body2" color={patient.allergies && patient.allergies !== 'NKDA' && patient.allergies.length > 0 ? 'error.main' : 'text.primary'}>
+              {patient.allergies && patient.allergies !== 'NKDA' && patient.allergies.length > 0
+                ? (Array.isArray(patient.allergies) ? patient.allergies.join(', ') : patient.allergies)
                 : 'No known allergies'}
             </Typography>
           </Grid>
@@ -517,9 +710,16 @@ export default function PatientDetail() {
                     >
                       View Details
                     </Button>
-                    <Button variant="outlined" size="small">
-                      Acknowledge
-                    </Button>
+                    {canAcknowledgeADRAlerts(user?.role) && (
+                      <Button 
+                        variant="outlined" 
+                        size="small"
+                        color="warning"
+                        onClick={() => handleAcknowledgeAlert(alert)}
+                      >
+                        Acknowledge
+                      </Button>
+                    )}
                   </Box>
                 </CardContent>
               </Card>
@@ -537,6 +737,337 @@ export default function PatientDetail() {
           </Typography>
         </TabPanel>
       </Paper>
+
+      {/* ADR Alert Acknowledgment Dialog */}
+      <Dialog open={acknowledgeDialogOpen} onClose={() => setAcknowledgeDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <WarningIcon color="error" />
+            <Box>
+              <Typography variant="h6">Acknowledge Medication Safety Alert</Typography>
+              {selectedAlert && (
+                <Typography variant="caption" color="text.secondary">
+                  Alert #{selectedAlert.id}: {selectedAlert.suspected_reaction}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedAlert && (
+            <>
+              <Alert severity="error" sx={{ mb: 3 }}>
+                <Typography variant="body2" fontWeight="bold">
+                  ⚠️ PATIENT SAFETY REQUIREMENT
+                </Typography>
+                <Typography variant="caption">
+                  This acknowledgment creates a legal record that you have read and understood this medication safety alert.
+                  You must verify monitoring parameters before EACH medication administration.
+                </Typography>
+              </Alert>
+
+              {/* Alert Summary */}
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'error.50', border: '1px solid', borderColor: 'error.main' }}>
+                <Typography variant="subtitle2" color="error" gutterBottom>
+                  Medication Safety Alert Summary:
+                </Typography>
+                <Typography variant="body2" paragraph>
+                  <strong>Medication:</strong> {selectedAlert.medication?.medication_name} {selectedAlert.medication?.dose}
+                </Typography>
+                <Typography variant="body2" paragraph>
+                  <strong>Suspected Reaction:</strong> {selectedAlert.suspected_reaction}
+                </Typography>
+                <Typography variant="body2" paragraph>
+                  <strong>Severity:</strong> <Chip label={selectedAlert.severity} color="error" size="small" />
+                </Typography>
+                <Typography variant="body2">
+                  {selectedAlert.alert_summary}
+                </Typography>
+              </Paper>
+
+              {/* Monitoring Parameters */}
+              {selectedAlert.monitoring_parameters && selectedAlert.monitoring_parameters.length > 0 && (
+                <Paper sx={{ p: 2, mb: 3, bgcolor: 'warning.50' }}>
+                  <Typography variant="subtitle2" color="warning.dark" gutterBottom>
+                    📋 Required Monitoring Parameters:
+                  </Typography>
+                  <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                    {selectedAlert.monitoring_parameters.map((param, idx) => (
+                      <li key={idx}>
+                        <Typography variant="body2">{param}</Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Paper>
+              )}
+
+              {/* Nursing Interventions */}
+              {selectedAlert.nursing_interventions && selectedAlert.nursing_interventions.length > 0 && (
+                <Paper sx={{ p: 2, mb: 3, bgcolor: 'info.50' }}>
+                  <Typography variant="subtitle2" color="info.dark" gutterBottom>
+                    🩺 Required Nursing Interventions:
+                  </Typography>
+                  <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                    {selectedAlert.nursing_interventions.map((intervention, idx) => (
+                      <li key={idx}>
+                        <Typography variant="body2">{intervention}</Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Paper>
+              )}
+
+              <Divider sx={{ my: 3 }} />
+
+              {/* Action Selection */}
+              <Typography variant="subtitle2" gutterBottom color="error">
+                🔔 Select Your Action:
+              </Typography>
+              
+              <Box sx={{ mb: 3 }}>
+                <Box 
+                  sx={{ 
+                    p: 2, 
+                    mb: 1,
+                    border: '2px solid', 
+                    borderColor: acknowledgmentForm.action === 'ACKNOWLEDGED' ? 'primary.main' : 'grey.300',
+                    borderRadius: 1,
+                    bgcolor: acknowledgmentForm.action === 'ACKNOWLEDGED' ? 'primary.50' : 'background.paper',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setAcknowledgmentForm({ ...acknowledgmentForm, action: 'ACKNOWLEDGED' })}
+                >
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <input
+                      type="radio"
+                      checked={acknowledgmentForm.action === 'ACKNOWLEDGED'}
+                      onChange={() => setAcknowledgmentForm({ ...acknowledgmentForm, action: 'ACKNOWLEDGED' })}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">
+                        ACKNOWLEDGE - Continue with Enhanced Monitoring
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        I will continue administering this medication with increased vigilance and monitoring
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Box 
+                  sx={{ 
+                    p: 2, 
+                    border: '2px solid', 
+                    borderColor: acknowledgmentForm.action === 'HOLD_MEDICATION' ? 'warning.main' : 'grey.300',
+                    borderRadius: 1,
+                    bgcolor: acknowledgmentForm.action === 'HOLD_MEDICATION' ? 'warning.50' : 'background.paper',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setAcknowledgmentForm({ ...acknowledgmentForm, action: 'HOLD_MEDICATION' })}
+                >
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <input
+                      type="radio"
+                      checked={acknowledgmentForm.action === 'HOLD_MEDICATION'}
+                      onChange={() => setAcknowledgmentForm({ ...acknowledgmentForm, action: 'HOLD_MEDICATION' })}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">
+                        HOLD MEDICATION - Stop Administration
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        I will hold this medication and notify the provider immediately
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Hold Medication Fields */}
+              {acknowledgmentForm.action === 'HOLD_MEDICATION' && (
+                <Paper sx={{ p: 2, mb: 3, bgcolor: 'warning.50', border: '1px solid', borderColor: 'warning.main' }}>
+                  <Typography variant="subtitle2" color="warning.dark" gutterBottom>
+                    ⚠️ Hold Medication - Additional Information Required:
+                  </Typography>
+                  
+                  <TextField
+                    label="Reason for Holding Medication *"
+                    fullWidth
+                    multiline
+                    rows={2}
+                    value={acknowledgmentForm.hold_reason}
+                    onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, hold_reason: e.target.value })}
+                    placeholder="Explain why you are holding this medication (e.g., symptoms worsening, vital signs out of range)..."
+                    sx={{ mt: 2 }}
+                    required
+                  />
+
+                  <TextField
+                    label="Hold Duration *"
+                    fullWidth
+                    value={acknowledgmentForm.hold_duration}
+                    onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, hold_duration: e.target.value })}
+                    placeholder="e.g., 24 hours, until provider assessment, pending lab results"
+                    sx={{ mt: 2 }}
+                    required
+                  />
+
+                  <Box sx={{ mt: 2, p: 1.5, border: '1px solid', borderColor: 'warning.main', borderRadius: 1 }}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <input
+                        type="checkbox"
+                        checked={acknowledgmentForm.provider_notified}
+                        onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, provider_notified: e.target.checked })}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <Typography variant="body2" fontWeight="bold">
+                        I have notified (or will immediately notify) the provider about holding this medication *
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+              )}
+
+              {/* Required Safety Verifications */}
+              <Typography variant="subtitle2" gutterBottom color="error">
+                ✓ Required Safety Verifications (All Must Be Checked):
+              </Typography>
+
+              <Box sx={{ 
+                p: 2, 
+                mb: 2,
+                border: '2px solid', 
+                borderColor: acknowledgmentForm.verified_reaction_awareness ? 'success.main' : 'grey.300',
+                borderRadius: 1,
+                bgcolor: acknowledgmentForm.verified_reaction_awareness ? 'success.50' : 'grey.50',
+              }}>
+                <Box display="flex" alignItems="flex-start" gap={1}>
+                  <input
+                    type="checkbox"
+                    checked={acknowledgmentForm.verified_reaction_awareness}
+                    onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, verified_reaction_awareness: e.target.checked })}
+                    style={{ marginTop: '4px', cursor: 'pointer' }}
+                  />
+                  <Box>
+                    <Typography variant="body2" fontWeight="bold">
+                      I understand the suspected adverse drug reaction and its severity
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      I have carefully reviewed the suspected reaction ({selectedAlert?.suspected_reaction}), 
+                      its severity level ({selectedAlert?.severity}), and patient-specific symptoms.
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+
+              <Box sx={{ 
+                p: 2, 
+                mb: 2,
+                border: '2px solid', 
+                borderColor: acknowledgmentForm.verified_monitoring_parameters ? 'success.main' : 'grey.300',
+                borderRadius: 1,
+                bgcolor: acknowledgmentForm.verified_monitoring_parameters ? 'success.50' : 'grey.50',
+              }}>
+                <Box display="flex" alignItems="flex-start" gap={1}>
+                  <input
+                    type="checkbox"
+                    checked={acknowledgmentForm.verified_monitoring_parameters}
+                    onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, verified_monitoring_parameters: e.target.checked })}
+                    style={{ marginTop: '4px', cursor: 'pointer' }}
+                  />
+                  <Box>
+                    <Typography variant="body2" fontWeight="bold">
+                      I will verify ALL monitoring parameters before EACH medication administration
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      I understand that I must check the required monitoring parameters (vital signs, symptoms, labs) 
+                      BEFORE giving this medication each time, not just once per shift.
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+
+              <Box sx={{ 
+                p: 2, 
+                mb: 2,
+                border: '2px solid', 
+                borderColor: acknowledgmentForm.verified_escalation_criteria ? 'success.main' : 'grey.300',
+                borderRadius: 1,
+                bgcolor: acknowledgmentForm.verified_escalation_criteria ? 'success.50' : 'grey.50',
+              }}>
+                <Box display="flex" alignItems="flex-start" gap={1}>
+                  <input
+                    type="checkbox"
+                    checked={acknowledgmentForm.verified_escalation_criteria}
+                    onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, verified_escalation_criteria: e.target.checked })}
+                    style={{ marginTop: '4px', cursor: 'pointer' }}
+                  />
+                  <Box>
+                    <Typography variant="body2" fontWeight="bold">
+                      I know when to escalate concerns to the provider
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      I understand what changes in patient condition require immediate provider notification 
+                      and will not hesitate to escalate if monitoring parameters are abnormal.
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+
+              <TextField
+                label="Monitoring Plan (Recommended)"
+                fullWidth
+                multiline
+                rows={2}
+                value={acknowledgmentForm.monitoring_plan}
+                onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, monitoring_plan: e.target.value })}
+                placeholder="Describe your specific plan for monitoring this patient (e.g., check vitals q4h, assess for symptoms before each dose)..."
+                sx={{ mt: 2 }}
+              />
+
+              <TextField
+                label="Additional Notes (Optional)"
+                fullWidth
+                multiline
+                rows={2}
+                value={acknowledgmentForm.notes}
+                onChange={(e) => setAcknowledgmentForm({ ...acknowledgmentForm, notes: e.target.value })}
+                placeholder="Document any additional concerns, questions, or actions you plan to take..."
+                sx={{ mt: 2 }}
+              />
+
+              <Alert severity="warning" icon={<Info />} sx={{ mt: 3 }}>
+                <Typography variant="caption">
+                  <strong>Legal Notice:</strong> This acknowledgment is part of the patient's permanent medical record.
+                  Your digital signature (username and timestamp) will be recorded. By clicking "I Acknowledge and Accept Responsibility",
+                  you certify that you understand your obligations under this safety alert.
+                </Typography>
+              </Alert>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAcknowledgeDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleAcknowledgeSubmit} 
+            variant="contained"
+            color={acknowledgmentForm.action === 'HOLD_MEDICATION' ? 'warning' : 'error'}
+            disabled={
+              !acknowledgmentForm.verified_reaction_awareness || 
+              !acknowledgmentForm.verified_monitoring_parameters || 
+              !acknowledgmentForm.verified_escalation_criteria ||
+              (acknowledgmentForm.action === 'HOLD_MEDICATION' && 
+                (!acknowledgmentForm.hold_reason || !acknowledgmentForm.hold_duration || !acknowledgmentForm.provider_notified))
+            }
+          >
+            {acknowledgmentForm.action === 'HOLD_MEDICATION' 
+              ? '⚠️ HOLD MEDICATION AND NOTIFY PROVIDER' 
+              : '✓ I ACKNOWLEDGE AND ACCEPT RESPONSIBILITY'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   )
 }

@@ -239,6 +239,22 @@ def seed_users(facility):
     )
     users.append(hha)
     
+    # TMA - Trained Medication Assistant (CNA with delegation)
+    tma = User(
+        facility_id=facility.id,
+        username="tma.lisa",
+        email="lisa.chen@harmonyhealth.com",
+        password_hash=bcrypt.hashpw("password123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        first_name="Lisa",
+        last_name="Chen",
+        role="TMA",
+        license_number="TMA-IL-44444",
+        phone="555-1007",
+        status="active",
+        is_active=True
+    )
+    users.append(tma)
+    
     db.session.add_all(users)
     db.session.commit()
     
@@ -246,7 +262,7 @@ def seed_users(facility):
     for u in users:
         print(f"   - {u.first_name} {u.last_name} ({u.role}) - username: {u.username}")
     
-    return rn, lpn, pharmacist, admin
+    return users  # Return full list for medication administration history
 
 
 def seed_patients(facility):
@@ -720,94 +736,259 @@ def seed_visits_and_vitals(patients, nurse):
     return visits
 
 
-def seed_medication_administrations(medications, patients, nurse):
-    """Create recent medication administrations."""
-    print("\n💉 Creating medication administrations...")
+def seed_medication_administrations(medications, patients, users):
+    """Create realistic medication administration history for training scenarios."""
+    print("\n💉 Creating medication administration history (past 7 days)...")
     
     administrations = []
+    now = datetime.utcnow()
     
-    # Patient 1 - Mary Anderson (simple case)
-    # Lisinopril - given this morning
-    admin1 = MedicationAdministration(
-        medication_id=medications[0].id,
-        patient_id=patients[0].id,
-        administered_by=nurse.id,
-        scheduled_time=datetime.utcnow().replace(hour=8, minute=0, second=0, microsecond=0),
-        administration_time=datetime.utcnow().replace(hour=8, minute=15, second=0, microsecond=0),
-        status="given",
-        route="PO",
-        dose_given="10 mg",
-        notes="Taken with breakfast as ordered"
-    )
-    administrations.append(admin1)
+    # Get users for varied documentation
+    nurse_rn = users[0]  # RN Jane
+    nurse_lpn = users[1]  # LPN Bob
+    tma = users[4]  # TMA Lisa
     
-    # Metformin - given morning and evening yesterday
-    admin2 = MedicationAdministration(
-        medication_id=medications[1].id,
-        patient_id=patients[0].id,
-        administered_by=nurse.id,
-        scheduled_time=(datetime.utcnow() - timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0),
-        administration_time=(datetime.utcnow() - timedelta(days=1)).replace(hour=8, minute=20, second=0, microsecond=0),
-        status="given",
-        route="PO",
-        dose_given="500 mg",
-        notes="Taken with breakfast"
-    )
-    administrations.append(admin2)
+    # Helper function to create scheduled administrations
+    def create_scheduled_admin(med_id, patient_id, nurse, days_back, hour, dose, route, notes=None):
+        sched_time = (now - timedelta(days=days_back)).replace(hour=hour, minute=0, second=0, microsecond=0)
+        admin_time = sched_time + timedelta(minutes=15)  # Typical 15min after scheduled
+        return MedicationAdministration(
+            medication_id=med_id,
+            patient_id=patient_id,
+            administered_by=nurse.id,
+            scheduled_time=sched_time,
+            administration_time=admin_time,
+            status="given",
+            route=route,
+            dose_given=dose,
+            notes=notes
+        )
     
-    # Patient 2 - Robert Johnson (complex hospice case)
-    # Furosemide - morning dose given
-    admin3 = MedicationAdministration(
-        medication_id=medications[2].id,
-        patient_id=patients[1].id,
-        administered_by=nurse.id,
-        scheduled_time=datetime.utcnow().replace(hour=8, minute=0, second=0, microsecond=0),
-        administration_time=datetime.utcnow().replace(hour=8, minute=10, second=0, microsecond=0),
-        status="given",
-        route="PO",
-        dose_given="40 mg"
-    )
-    administrations.append(admin3)
+    # Patient 1 - Mary Anderson (simple case - HTN + Diabetes)
+    # Lisinopril 10mg daily @ 08:00 - consistent adherence, past 7 days
+    print("   → Mary Anderson (consistent routine meds)...")
+    for day in range(7):
+        administrations.append(create_scheduled_admin(
+            medications[0].id, patients[0].id, 
+            nurse_rn if day % 3 == 0 else nurse_lpn,  # Mix of RN/LPN
+            day, 8, "10 mg", "PO",
+            "Taken with breakfast" if day == 0 else None
+        ))
     
-    # Morphine PRN - given for dyspnea (will create observation for ADR testing)
-    admin4 = MedicationAdministration(
-        medication_id=medications[4].id,
-        patient_id=patients[1].id,
-        administered_by=nurse.id,
-        scheduled_time=None,  # PRN
-        administration_time=datetime.utcnow() - timedelta(minutes=45),
-        status="given",
-        route="PO",
-        dose_given="5 mg",
-        prn_reason="Shortness of breath",
-        notes="Patient reporting increased dyspnea. Morphine administered as ordered."
-    )
-    administrations.append(admin4)
+    # Metformin 500mg BID @ 08:00 and 18:00 - past 7 days
+    for day in range(7):
+        # Morning dose
+        administrations.append(create_scheduled_admin(
+            medications[1].id, patients[0].id,
+            nurse_rn if day % 3 == 0 else tma,  # Mix of RN/TMA
+            day, 8, "500 mg", "PO"
+        ))
+        # Evening dose
+        administrations.append(create_scheduled_admin(
+            medications[1].id, patients[0].id,
+            nurse_lpn if day % 2 == 0 else tma,
+            day, 18, "500 mg", "PO"
+        ))
+    
+    # Patient 2 - Robert Johnson (complex hospice - multiple scheduled + PRN)
+    print("   → Robert Johnson (complex hospice with PRN use)...")
+    
+    # Furosemide 40mg BID @ 08:00 and 14:00 - past 7 days
+    for day in range(7):
+        administrations.append(create_scheduled_admin(
+            medications[2].id, patients[1].id,
+            nurse_rn if day < 4 else nurse_lpn,
+            day, 8, "40 mg", "PO",
+            "Weight monitored" if day == 0 else None
+        ))
+        administrations.append(create_scheduled_admin(
+            medications[2].id, patients[1].id,
+            nurse_rn if day < 4 else nurse_lpn,
+            day, 14, "40 mg", "PO"
+        ))
+    
+    # Albuterol QID @ 08:00, 12:00, 16:00, 20:00 - past 7 days
+    for day in range(7):
+        for hour in [8, 12, 16, 20]:
+            administrations.append(create_scheduled_admin(
+                medications[3].id, patients[1].id,
+                nurse_rn if hour in [8, 20] else nurse_lpn,
+                day, hour, "2.5 mg", "INH",
+                "Breath sounds improved" if day == 0 and hour == 8 else None
+            ))
+    
+    # Morphine PRN - variable use for dyspnea/pain (realistic hospice pattern)
+    prn_times = [
+        (0, 10, "Dyspnea", 8, 5),  # Today morning
+        (1, 15, "Dyspnea with exertion", 7, 4),
+        (1, 22, "Pain", 6, 4),
+        (2, 9, "Dyspnea", 8, 5),
+        (3, 14, "Pain in chest", 7, 4),
+        (4, 11, "Dyspnea", 9, 5),
+        (5, 16, "Pain", 6, 3),
+        (6, 21, "Dyspnea at rest", 8, 5)
+    ]
+    for days_back, hour, reason, before, after in prn_times:
+        admin_time = (now - timedelta(days=days_back)).replace(hour=hour, minute=30, second=0, microsecond=0)
+        reassess_time = admin_time + timedelta(minutes=30)
+        administrations.append(MedicationAdministration(
+            medication_id=medications[4].id,
+            patient_id=patients[1].id,
+            administered_by=nurse_rn.id,
+            scheduled_time=None,
+            administration_time=admin_time,
+            status="given",
+            route="PO",
+            dose_given="5 mg",
+            prn_reason=reason,
+            prn_pain_level_before=before,
+            prn_pain_level_after=after,
+            prn_effectiveness_rating=4 if after < 5 else 3,
+            prn_reassessment_time=reassess_time,
+            notes=f"{reason}. Symptom level reduced from {before}/10 to {after}/10."
+        ))
+    
+    # Digoxin 0.125mg daily @ 08:00 - past 7 days, one held for low HR
+    for day in range(7):
+        if day == 3:  # Held one dose
+            sched_time = (now - timedelta(days=day)).replace(hour=8, minute=0, second=0, microsecond=0)
+            administrations.append(MedicationAdministration(
+                medication_id=medications[5].id,
+                patient_id=patients[1].id,
+                administered_by=nurse_rn.id,
+                scheduled_time=sched_time,
+                administration_time=sched_time,  # Time of decision to hold
+                status="held",
+                route="PO",
+                dose_given="0.125 mg",
+                notes="HELD: HR 54 bpm. MD notified. Will recheck in 4 hours."
+            ))
+        else:
+            administrations.append(create_scheduled_admin(
+                medications[5].id, patients[1].id,
+                nurse_rn if day % 2 == 0 else nurse_lpn,
+                day, 8, "0.125 mg", "PO",
+                "HR 68 bpm - within parameters" if day == 0 else None
+            ))
     
     # Patient 3 - Patricia Williams (post-surgical)
-    # Oxycodone PRN - given for pain with reassessment
-    admin5 = MedicationAdministration(
-        medication_id=medications[6].id,
-        patient_id=patients[2].id,
-        administered_by=nurse.id,
-        scheduled_time=None,  # PRN
-        administration_time=datetime.utcnow() - timedelta(hours=3),
-        status="given",
-        route="PO",
-        dose_given="5 mg",
-        prn_reason="Post-surgical pain",
-        prn_pain_level_before=7,
-        prn_pain_level_after=3,
-        prn_effectiveness_rating=4,
-        prn_reassessment_time=datetime.utcnow() - timedelta(hours=2, minutes=30),
-        notes="Pain reduced from 7/10 to 3/10. Patient able to participate in PT."
-    )
-    administrations.append(admin5)
+    print("   → Patricia Williams (post-op pain management)...")
+    
+    # Oxycodone PRN - decreasing frequency (healing pattern)
+    prn_oxy = [
+        (0, 14, 6, 2),  # Today - much better
+        (1, 9, 7, 3), (1, 21, 6, 2),  # Yesterday - improving
+        (2, 6, 8, 4), (2, 14, 7, 3), (2, 22, 7, 3),  # 2 days ago
+        (3, 8, 8, 4), (3, 16, 8, 4), (3, 23, 7, 3),  # 3 days ago
+        (4, 7, 9, 5), (4, 13, 8, 4), (4, 19, 8, 4),  # 4 days ago - peak pain
+        (5, 10, 8, 4), (5, 16, 9, 5), (5, 22, 8, 4),  # 5 days ago
+        (6, 12, 9, 5), (6, 18, 9, 5)  # 6 days ago - post-op day 1
+    ]
+    for days_back, hour, before, after in prn_oxy:
+        admin_time = (now - timedelta(days=days_back)).replace(hour=hour, minute=0, second=0, microsecond=0)
+        reassess_time = admin_time + timedelta(minutes=30)
+        administrations.append(MedicationAdministration(
+            medication_id=medications[6].id,
+            patient_id=patients[2].id,
+            administered_by=nurse_rn.id if days_back > 3 else nurse_lpn.id,
+            scheduled_time=None,
+            administration_time=admin_time,
+            status="given",
+            route="PO",
+            dose_given="5 mg",
+            prn_reason="Post-surgical incision pain",
+            prn_pain_level_before=before,
+            prn_pain_level_after=after,
+            prn_effectiveness_rating=5 if after <= 3 else 4,
+            prn_reassessment_time=reassess_time,
+            notes=f"Pain reduced {before}/10 → {after}/10. {'Able to ambulate' if after < 4 else 'Resting in bed'}."
+        ))
+    
+    # Enoxaparin 40mg daily @ 20:00 - DVT prophylaxis, past 7 days
+    for day in range(7):
+        sites = ["Left abdomen", "Right abdomen", "Left thigh", "Right thigh"]
+        administrations.append(create_scheduled_admin(
+            medications[7].id, patients[2].id,
+            nurse_rn if day % 2 == 0 else nurse_lpn,
+            day, 20, "40 mg", "SUBQ",
+            f"Injection site: {sites[day % 4]}. No bleeding or bruising noted." if day == 0 else f"{sites[day % 4]}"
+        ))
+    
+    # Levothyroxine 75mcg daily @ 06:00 - consistent, past 7 days
+    for day in range(7):
+        administrations.append(create_scheduled_admin(
+            medications[8].id, patients[2].id,
+            nurse_rn if day < 3 else nurse_lpn,
+            day, 6, "75 mcg", "PO",
+            "Taken on empty stomach" if day == 0 else None
+        ))
+    
+    # Patient 4 - James Brown (high-risk anticoagulation)
+    print("   → James Brown (warfarin management)...")
+    
+    # Warfarin 5mg daily @ 18:00 - past 7 days with INR monitoring
+    for day in range(7):
+        inr_note = None
+        if day == 0:
+            inr_note = "INR 2.4 (therapeutic). Continue current dose."
+        elif day == 3:
+            inr_note = "INR checked today: 2.6 (therapeutic range)."
+        
+        administrations.append(create_scheduled_admin(
+            medications[9].id, patients[3].id,
+            nurse_rn,  # RN only for warfarin
+            day, 18, "5 mg", "PO",
+            inr_note
+        ))
+    
+    # Patient 1 - Add sliding scale insulin administrations (realistic BG management)
+    print("   → Mary Anderson (sliding scale insulin - added)...")
+    insulin_med_id = None
+    for med in medications:
+        if med.patient_id == patients[0].id and 'Insulin' in (med.medication_name or ''):
+            insulin_med_id = med.id
+            break
+    
+    if insulin_med_id:
+        # AC (before meals) and HS (bedtime) pattern - 4 times daily
+        insulin_schedule = [
+            (0, 7, 30, 185, 2),  # Today breakfast - BG 185
+            (0, 11, 30, 165, 0),  # Today lunch - BG 165 (no insulin needed)
+            (0, 17, 0, 220, 4),  # Today dinner - BG 220
+            (1, 7, 30, 195, 2),  # Yesterday breakfast
+            (1, 11, 30, 155, 0),  # Yesterday lunch
+            (1, 17, 0, 175, 2),  # Yesterday dinner
+            (1, 21, 0, 145, 0),  # Yesterday bedtime
+            (2, 7, 30, 210, 4),  # 2 days ago breakfast
+            (2, 11, 30, 180, 2),  # 2 days ago lunch
+        ]
+        
+        for days_back, hour, minute, bg_reading, units in insulin_schedule:
+            admin_time = (now - timedelta(days=days_back)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+            dose = f"{units} units" if units > 0 else "0 units"
+            status = "given" if units > 0 else "held"
+            notes = f"BG {bg_reading} mg/dL. "
+            if units == 0:
+                notes += "No insulin needed per sliding scale."
+            else:
+                notes += f"Administered {units} units per sliding scale protocol."
+            
+            administrations.append(MedicationAdministration(
+                medication_id=insulin_med_id,
+                patient_id=patients[0].id,
+                administered_by=nurse_rn.id if days_back < 2 else tma.id,
+                scheduled_time=admin_time,
+                administration_time=admin_time + timedelta(minutes=5) if units > 0 else admin_time,  # Decision time if held
+                status=status,
+                route="SQ",
+                dose_given=dose,
+                notes=notes
+            ))
     
     db.session.add_all(administrations)
     db.session.commit()
     
-    print(f"✅ Created {len(administrations)} medication administrations")
+    print(f"✅ Created {len(administrations)} medication administrations (7-day realistic history)")
     return administrations
 
 
@@ -1090,11 +1271,12 @@ def main():
         
         # Create data
         org, facility1, facility2 = seed_organizations_and_facilities()
-        rn, lpn, pharmacist, admin = seed_users(facility1)
+        users = seed_users(facility1)  # Returns list: [rn, lpn, pharmacist, admin, tma, cna, hha]
+        rn, lpn, pharmacist, admin = users[0], users[1], users[2], users[3]
         patients = seed_patients(facility1)
         medications = seed_medications(patients)
         visits = seed_visits_and_vitals(patients, rn)
-        administrations = seed_medication_administrations(medications, patients, rn)
+        administrations = seed_medication_administrations(medications, patients, users)
         observation, adr_alert = seed_adr_scenario(patients, rn, medications)
         reconciliation, discrepancies = seed_reconciliation_scenario(patients, rn)
         

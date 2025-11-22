@@ -47,16 +47,18 @@ def generate_today_schedule():
                     
                     # Create new scheduled administration
                     # Note: DB schema requires administration_time to be NOT NULL
-                    # For scheduled doses, we set it equal to scheduled_time initially
+                    # For pending doses, we set it equal to scheduled_time initially
+                    # Status will be updated to 'given', 'held', etc. when administered
                     admin = MedicationAdministration(
                         medication_id=med.id,
                         patient_id=med.patient_id,
                         scheduled_time=scheduled_dt,
-                        administration_time=scheduled_dt,  # Will be updated when actually given
-                        status='scheduled',
+                        administration_time=scheduled_dt,  # Placeholder - updated when actually given
+                        status='pending',  # Scheduled but not yet given
                         dose_given=med.dose,
                         route=med.route,
-                        administered_by=1  # System/scheduler user
+                        administered_by=1,  # System scheduler (will be updated when actually administered)
+                        notes='Scheduled - pending administration'
                     )
                     
                     db.session.add(admin)

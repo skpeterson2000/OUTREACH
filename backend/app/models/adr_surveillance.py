@@ -380,6 +380,101 @@ class ADRAlert(db.Model):
         return data
 
 
+class ADRAlertAcknowledgment(db.Model):
+    """
+    Individual staff acknowledgments of ADR alerts.
+    
+    Each staff member who administers medications to a patient must independently
+    acknowledge each active ADR alert before giving meds. Acknowledgments expire
+    after each shift (12 hours) requiring re-acknowledgment.
+    """
+    __tablename__ = 'adr_alert_acknowledgments'
+    
+    # Action constants
+    ACTION_ACKNOWLEDGED = 'ACKNOWLEDGED'  # Aware and monitoring
+    ACTION_HOLD_MEDICATION = 'HOLD_MEDICATION'  # Holding suspect medication
+    
+    ACTION_CHOICES = [
+        ACTION_ACKNOWLEDGED,
+        ACTION_HOLD_MEDICATION
+    ]
+    
+    id = db.Column(db.Integer, primary_key=True)
+    alert_id = db.Column(db.Integer, db.ForeignKey('adr_alerts.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    facility_id = db.Column(db.Integer, db.ForeignKey('facilities.id'), nullable=False)
+    
+    # Acknowledgment details
+    action_taken = db.Column(db.String(30), nullable=False)  # ACKNOWLEDGED or HOLD_MEDICATION
+    acknowledged_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)  # 12 hours from acknowledgment
+    
+    # Safety verification checkboxes (required)
+    verified_reaction_awareness = db.Column(db.Boolean, default=False, nullable=False)
+    verified_monitoring_parameters = db.Column(db.Boolean, default=False, nullable=False)
+    verified_escalation_criteria = db.Column(db.Boolean, default=False, nullable=False)
+    
+    # If holding medication
+    hold_reason = db.Column(db.Text)  # Required if action = HOLD_MEDICATION
+    hold_duration = db.Column(db.String(50))  # "Until symptoms resolve", "24 hours", etc.
+    provider_notified = db.Column(db.Boolean, default=False)
+    provider_notified_at = db.Column(db.DateTime)
+    hold_order_obtained = db.Column(db.Boolean, default=False)  # Provider order to hold
+    
+    # Staff notes
+    notes = db.Column(db.Text)
+    monitoring_plan = db.Column(db.Text)  # What staff member plans to monitor
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    alert = db.relationship('ADRAlert', backref=db.backref('acknowledgments', lazy='dynamic'))
+    user = db.relationship('User')
+    facility = db.relationship('Facility')
+    
+    def __repr__(self):
+        return f'<ADRAlertAcknowledgment Alert#{self.alert_id} by User#{self.user_id}>'
+    
+    @property
+    def is_expired(self):
+        """Check if acknowledgment has expired (shift ended)."""
+        return datetime.utcnow() > self.expires_at
+    
+    @property
+    def is_valid(self):
+        """Check if acknowledgment is still valid."""
+        return not self.is_expired and all([
+            self.verified_reaction_awareness,
+            self.verified_monitoring_parameters,
+            self.verified_escalation_criteria
+        ])
+    
+    def to_dict(self):
+        """Serialize to dictionary."""
+        return {
+            'id': self.id,
+            'alert_id': self.alert_id,
+            'user_id': self.user_id,
+            'action_taken': self.action_taken,
+            'acknowledged_at': self.acknowledged_at.isoformat(),
+            'expires_at': self.expires_at.isoformat(),
+            'is_expired': self.is_expired,
+            'is_valid': self.is_valid,
+            'verified_reaction_awareness': self.verified_reaction_awareness,
+            'verified_monitoring_parameters': self.verified_monitoring_parameters,
+            'verified_escalation_criteria': self.verified_escalation_criteria,
+            'hold_reason': self.hold_reason,
+            'hold_duration': self.hold_duration,
+            'provider_notified': self.provider_notified,
+            'provider_notified_at': self.provider_notified_at.isoformat() if self.provider_notified_at else None,
+            'hold_order_obtained': self.hold_order_obtained,
+            'notes': self.notes,
+            'monitoring_plan': self.monitoring_plan,
+            'created_at': self.created_at.isoformat()
+        }
+
+
 class ADRSurveillanceLog(db.Model):
     """
     Audit log for ADR surveillance system operations.
