@@ -7,16 +7,18 @@ A comprehensive Electronic Health Record system designed for multi-level care en
 This enterprise-grade EHR supports:
 - **Medication Management**: MAR with hold/resume capabilities, medication reconciliation, PRN tracking, overdue alerts
 - **Adverse Drug Reaction (ADR) Surveillance**: Real-time monitoring and pharmacist collaboration
-- **Patient Care Documentation**: Visit notes, assessments, care plans
+- **Care Plan Management**: Comprehensive nursing interventions, physician orders, and assistance tasks with role-based workflows
+- **Patient Care Documentation**: Visit notes, assessments, care plans with outcome tracking
 - **Wound Care**: Comprehensive wound assessment and tracking
+- **Skilled Nursing Procedures**: Catheter care, tracheostomy care, ostomy care, G-tube care, IV management
 - **Billing & Revenue Cycle**: Medicare/Medicaid billing codes, visit documentation for reimbursement, ICD-10/CPT coding
 - **Specialty Assessments**:
-  - Burn evaluation (Rule of 8s)
-  - Respiratory assessments
-  - Dietary/nutritional assessments
-  - Psychological screening tools
-  - Pain management
-  - Fall risk assessment
+  - Fall risk (Morse Scale) and pressure injury risk (Braden Scale)
+  - Respiratory assessments (COPD, oxygen therapy)
+  - Cardiac assessments (CHF monitoring, edema tracking)
+  - Neurological assessments (Glasgow Coma Scale, pain assessment)
+  - Nutritional assessments (BMI, malnutrition screening)
+  - Functional status (Barthel Index, ADL tracking)
   - And more...
 
 ## Care Settings Supported
@@ -112,19 +114,33 @@ See individual setup instructions in:
 ## Development Roadmap
 
 ### Completed ✅
+
 - [x] Project initialization with Flask backend and React frontend
 - [x] SQLAlchemy database models and relationships
-- [x] JWT authentication with role-based access control (RN, LPN, Pharmacist, Admin)
+- [x] JWT authentication with role-based access control (RN, LPN, Pharmacist, Admin, CNA, HHA, TMA)
+- [x] Multi-tenant architecture with organization and facility management
 - [x] Patient management and demographics
 - [x] Medication Administration Record (MAR) with scheduling
 - [x] Medication hold/resume functionality
 - [x] Overdue medication tracking with configurable grace periods
 - [x] Adverse Drug Reaction (ADR) surveillance system
 - [x] Pharmacist collaboration workflow
-- [x] Comprehensive audit logging
+- [x] **Care Plan Management System**:
+  - [x] Care plan creation and management (RN/Admin)
+  - [x] Nursing interventions with scheduling and assignment
+  - [x] Physician orders with verification workflow
+  - [x] Assistance tasks for CNAs/HHAs with safety tracking
+  - [x] Completion documentation with outcomes and patient response
+  - [x] Role-based permissions and workflow enforcement
+  - [x] Support for catheter care, tracheostomy care, ostomy care, G-tube care
+- [x] Comprehensive audit logging with rotating file handlers
+- [x] Auto-lock security system with idle detection
+- [x] Database migrations with Alembic
 
 ### In Progress 🔨
-- [ ] Patient detail page (frontend routing issue)
+
+- [ ] Care plan creation form (UI)
+- [ ] Navigation menu integration
 - [ ] Visit documentation interface
 - [ ] Medication reconciliation workflow
 

@@ -598,6 +598,126 @@ Most list endpoints support:
 
 ---
 
+## Care Plans
+
+### Care Plan Management
+```
+GET    /api/care-plans                          # List care plans (filter by patient_id, status)
+GET    /api/care-plans/<id>                     # Get care plan with all interventions, orders, tasks
+POST   /api/care-plans                          # Create new care plan (RN/Admin only)
+PUT    /api/care-plans/<id>                     # Update care plan (RN/Admin only)
+```
+
+**POST /api/care-plans** - Request Body:
+```json
+{
+  "patient_id": 1,
+  "plan_name": "Comprehensive Care Plan - CHF Management",
+  "plan_type": "comprehensive",
+  "care_goals": "Improve fluid management, reduce hospital readmissions, increase activity tolerance",
+  "clinical_summary": "Patient with CHF exacerbation, stage 2 pressure injury",
+  "start_date": "2025-11-21",
+  "ordering_physician": "Dr. Smith",
+  "physician_phone": "555-0123"
+}
+```
+
+### Nursing Interventions
+```
+POST   /api/care-plans/<id>/interventions       # Add intervention to care plan
+PUT    /api/care-plans/interventions/<id>       # Update intervention (status, assignment)
+POST   /api/care-plans/interventions/<id>/complete  # Document intervention completion
+GET    /api/care-plans/interventions/<id>/completions # Get completion history
+```
+
+**POST /api/care-plans/<id>/interventions** - Request Body:
+```json
+{
+  "intervention_type": "catheter_care",
+  "intervention_name": "Foley catheter care and assessment",
+  "description": "Assess catheter site, check drainage, monitor for signs of infection",
+  "frequency": "Daily",
+  "scheduled_times": ["08:00", "20:00"],
+  "start_date": "2025-11-21",
+  "assigned_role": "RN",
+  "requires_rn": true,
+  "priority": "routine",
+  "expected_outcome": "No signs of infection, proper drainage maintained"
+}
+```
+
+**POST /api/care-plans/interventions/<id>/complete** - Request Body:
+```json
+{
+  "status": "completed",
+  "completion_notes": "Catheter site clean and dry, no signs of infection. Drainage clear yellow.",
+  "patient_response": "Patient tolerated procedure well, no complaints",
+  "outcome_achieved": "Catheter functioning properly, no complications",
+  "duration_minutes": 15,
+  "requires_follow_up": false
+}
+```
+
+### Physician Orders
+```
+POST   /api/care-plans/<id>/orders              # Add physician order to care plan
+POST   /api/care-plans/orders/<id>/verify       # Verify order (RN/LPN only)
+POST   /api/care-plans/orders/<id>/complete     # Document order completion
+```
+
+**POST /api/care-plans/<id>/orders** - Request Body:
+```json
+{
+  "order_type": "treatment",
+  "order_text": "Wound care to sacral pressure injury Stage 2, DuoDerm dressing, change every 3 days",
+  "ordering_physician": "Dr. Johnson",
+  "order_date": "2025-11-21T10:00:00",
+  "start_date": "2025-11-21",
+  "frequency": "Every 3 days",
+  "priority": "routine",
+  "special_instructions": "Assess wound margins, document size/appearance"
+}
+```
+
+### Assistance Tasks
+```
+POST   /api/care-plans/<id>/tasks               # Add assistance task to care plan
+POST   /api/care-plans/tasks/<id>/complete      # Document task completion
+GET    /api/care-plans/tasks/<id>/completions   # Get completion history
+```
+
+**POST /api/care-plans/<id>/tasks** - Request Body:
+```json
+{
+  "task_category": "adl",
+  "task_name": "Bathing assistance",
+  "description": "Assist with shower, ensure safety, monitor skin condition",
+  "adl_type": "bathing",
+  "assistance_level": "moderate_assist",
+  "frequency": "Daily",
+  "scheduled_times": ["09:00"],
+  "start_date": "2025-11-21",
+  "assigned_role": "CNA",
+  "requires_two_person_assist": false,
+  "fall_risk_precautions": true,
+  "safety_precautions": "Use shower chair, non-slip mat, call bell within reach"
+}
+```
+
+**POST /api/care-plans/tasks/<id>/complete** - Request Body:
+```json
+{
+  "status": "completed",
+  "completion_notes": "Shower completed successfully, patient cooperative",
+  "patient_tolerance": "well_tolerated",
+  "patient_participation": "Patient able to wash upper body with setup",
+  "safety_incidents": false,
+  "duration_minutes": 25
+}
+```
+
+---
+
 ## Rate Limiting
 
 ```
