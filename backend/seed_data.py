@@ -27,7 +27,9 @@ from app.models import (
     Patient, Visit, Medication, MedicationAdministration,
     VitalSigns, Assessment, PatientObservation,
     ADRAlert, MedicationAdverseReaction, MedicationReconciliation, MedicationDiscrepancy,
-    PharmacistCollaboration, PharmacistIntervention
+    PharmacistCollaboration, PharmacistIntervention,
+    CarePlan, NursingIntervention, PhysicianOrder, AssistanceTask,
+    InterventionCompletion, OrderCompletion, TaskCompletion
 )
 import bcrypt
 
@@ -48,6 +50,13 @@ def clear_data():
             return
     
     # Order matters due to foreign key constraints
+    TaskCompletion.query.delete()
+    OrderCompletion.query.delete()
+    InterventionCompletion.query.delete()
+    AssistanceTask.query.delete()
+    PhysicianOrder.query.delete()
+    NursingIntervention.query.delete()
+    CarePlan.query.delete()
     PharmacistIntervention.query.delete()
     PharmacistCollaboration.query.delete()
     MedicationDiscrepancy.query.delete()
@@ -1229,6 +1238,420 @@ def seed_reconciliation_scenario(patients, nurse):
     return reconciliation, discrepancies
 
 
+def seed_care_plans(patients, users, facility):
+    """Create realistic care plans with interventions, orders, and tasks."""
+    print("\n📋 Creating care plans...")
+    
+    rn = users[0]  # RN for creation
+    care_plans = []
+    
+    # Care Plan 1: Robert Johnson (Hospice patient with complex needs)
+    cp1 = CarePlan(
+        patient_id=patients[1].id,
+        facility_id=facility.id,
+        plan_name="Hospice Comfort Care - Terminal CHF",
+        plan_type="comprehensive",
+        care_goals="Maintain comfort and dignity, manage pain and dyspnea, support family through end-of-life transition",
+        clinical_summary="79yo M with end-stage CHF, COPD, diabetes. DNR/DNI. Goals of care: comfort measures only. High fall risk. Requires assistance with all ADLs.",
+        discharge_plan="Hospice care until natural death. Family educated on signs/symptoms of active dying.",
+        status="active",
+        start_date=(datetime.now() - timedelta(days=30)).date(),
+        expected_end_date=None,
+        next_review_date=(datetime.now() + timedelta(days=7)).date(),
+        last_review_date=(datetime.now() - timedelta(days=7)).date(),
+        primary_nurse_id=rn.id,
+        ordering_physician="Dr. Sarah Martinez",
+        physician_npi="1234567890",
+        physician_phone="555-0150",
+        created_by_user_id=rn.id
+    )
+    care_plans.append(cp1)
+    db.session.add(cp1)
+    db.session.flush()
+    
+    # Interventions for Robert
+    interventions_robert = [
+        NursingIntervention(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            intervention_type="assessment",
+            intervention_name="Pain assessment using verbal scale",
+            description="Assess pain level 0-10, location, character, aggravating/relieving factors. Monitor effectiveness of morphine.",
+            rationale="Hospice patient requires frequent pain monitoring for comfort",
+            frequency="Every 4 hours and PRN",
+            frequency_times_per_day=6,
+            scheduled_times='["02:00", "06:00", "10:00", "14:00", "18:00", "22:00"]',
+            start_date=cp1.start_date,
+            assigned_role="RN",
+            requires_rn=True,
+            priority="urgent",
+            expected_outcome="Pain maintained at 3/10 or below per patient preference",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        NursingIntervention(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            intervention_type="assessment",
+            intervention_name="Respiratory assessment and dyspnea management",
+            description="Assess respiratory rate, effort, oxygen saturation, breath sounds. Monitor dyspnea severity. Evaluate need for oxygen or morphine.",
+            rationale="End-stage COPD and CHF causing significant dyspnea",
+            frequency="Every 4 hours",
+            frequency_times_per_day=6,
+            start_date=cp1.start_date,
+            assigned_role="RN",
+            requires_rn=True,
+            priority="urgent",
+            expected_outcome="Patient reports tolerable breathing, resp rate 16-24",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        NursingIntervention(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            intervention_type="assessment",
+            intervention_name="Morse Fall Scale assessment",
+            description="Evaluate fall risk using Morse Fall Scale. Assess gait, mental status, IV/heplock present, ambulatory aid use.",
+            rationale="High fall risk due to weakness, orthostatic hypotension, confusion",
+            frequency="Daily",
+            scheduled_times='["10:00"]',
+            start_date=cp1.start_date,
+            assigned_role="RN",
+            requires_rn=True,
+            priority="routine",
+            expected_outcome="Fall risk identified and interventions implemented",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        NursingIntervention(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            intervention_type="wound_care",
+            intervention_name="Stage 2 sacral pressure injury care",
+            description="Cleanse wound with normal saline, assess size/depth/drainage, apply DuoDerm dressing. Reposition q2h.",
+            rationale="Bedbound patient with existing stage 2 pressure injury",
+            frequency="Every 3 days",
+            start_date=cp1.start_date,
+            assigned_role="RN",
+            requires_rn=False,
+            can_delegate=True,
+            priority="routine",
+            expected_outcome="Wound healing, no signs of infection, no progression",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        NursingIntervention(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            intervention_type="catheter_care",
+            intervention_name="Foley catheter care and monitoring",
+            description="Assess catheter insertion site, check tubing patency, monitor urine output/color/clarity. Perineal care BID.",
+            rationale="Foley catheter for comfort care, urine output monitoring",
+            frequency="BID",
+            scheduled_times='["09:00", "21:00"]',
+            start_date=cp1.start_date,
+            assigned_role="LPN",
+            requires_rn=False,
+            can_delegate=True,
+            priority="routine",
+            expected_outcome="No UTI signs, catheter patent, output adequate",
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(interventions_robert)
+    
+    # Orders for Robert
+    orders_robert = [
+        PhysicianOrder(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            order_type="medication",
+            order_text="Morphine sulfate 5-10mg PO/SL q2h PRN pain or dyspnea, may increase per hospice protocol",
+            ordering_physician="Dr. Sarah Martinez",
+            order_date=datetime.now() - timedelta(days=30),
+            start_date=cp1.start_date,
+            frequency="PRN",
+            prn_indication="Pain > 3/10 or moderate to severe dyspnea",
+            priority="stat",
+            special_instructions="Can be given sublingually if patient unable to swallow",
+            verification_status="verified",
+            verified_by_user_id=rn.id,
+            verified_at=datetime.now() - timedelta(days=30),
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        PhysicianOrder(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            order_type="treatment",
+            order_text="Oxygen via nasal cannula 2-4L PRN dyspnea, titrate to comfort",
+            ordering_physician="Dr. Sarah Martinez",
+            order_date=datetime.now() - timedelta(days=30),
+            start_date=cp1.start_date,
+            frequency="PRN",
+            prn_indication="Dyspnea, oxygen saturation < 88%",
+            priority="urgent",
+            verification_status="verified",
+            verified_by_user_id=rn.id,
+            verified_at=datetime.now() - timedelta(days=30),
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(orders_robert)
+    
+    # Tasks for Robert
+    tasks_robert = [
+        AssistanceTask(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            task_category="adl",
+            task_name="Bed bath and skin care",
+            description="Complete bed bath, gentle skin care, moisturize all pressure points, inspect skin for breakdown",
+            adl_type="bathing",
+            assistance_level="total_care",
+            frequency="Daily",
+            scheduled_times='["10:00"]',
+            estimated_duration_minutes=45,
+            start_date=cp1.start_date,
+            assigned_role="CNA",
+            requires_two_person_assist=False,
+            priority="routine",
+            equipment_needed="Bath basin, washcloths, towels, moisturizer",
+            safety_precautions="Patient very weak, support head/neck, watch for pain/discomfort",
+            fall_risk_precautions=True,
+            patient_preferences="Prefers warm water, gentle handling",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        AssistanceTask(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            task_category="mobility",
+            task_name="Reposition in bed",
+            description="Turn and reposition every 2 hours, use pillows for support, check pressure points",
+            assistance_level="total_care",
+            frequency="Every 2 hours",
+            frequency_times_per_day=12,
+            estimated_duration_minutes=10,
+            start_date=cp1.start_date,
+            assigned_role="CNA",
+            requires_two_person_assist=True,
+            priority="urgent",
+            equipment_needed="Pillows, wedge cushions, lift sheet",
+            safety_precautions="Use proper body mechanics, TWO-PERSON assist required, watch for pain",
+            fall_risk_precautions=True,
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        AssistanceTask(
+            care_plan_id=cp1.id,
+            patient_id=patients[1].id,
+            task_category="meal",
+            task_name="Feeding assistance",
+            description="Assist with meals, encourage small frequent bites, monitor swallowing, offer fluids",
+            assistance_level="maximal_assist",
+            frequency="TID with meals",
+            scheduled_times='["08:00", "12:00", "18:00"]',
+            estimated_duration_minutes=30,
+            start_date=cp1.start_date,
+            assigned_role="HHA",
+            priority="routine",
+            safety_precautions="Aspiration risk - sit upright, small bites, watch for coughing",
+            patient_preferences="Small portions, prefers soft foods, likes coffee with cream",
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(tasks_robert)
+    
+    # Care Plan 2: Mary Anderson (Stable diabetic with CHF)
+    cp2 = CarePlan(
+        patient_id=patients[0].id,
+        facility_id=facility.id,
+        plan_name="Chronic Disease Management - Diabetes & CHF",
+        plan_type="comprehensive",
+        care_goals="Maintain stable blood glucose 80-180, prevent CHF exacerbation, promote independence with ADLs",
+        clinical_summary="72yo F with Type 2 DM, CHF. Stable on current medication regimen. Independent with ADLs, uses walker.",
+        status="active",
+        start_date=(datetime.now() - timedelta(days=60)).date(),
+        next_review_date=(datetime.now() + timedelta(days=14)).date(),
+        last_review_date=(datetime.now() - timedelta(days=14)).date(),
+        primary_nurse_id=rn.id,
+        ordering_physician="Dr. James Chen",
+        physician_npi="9876543210",
+        physician_phone="555-0160",
+        created_by_user_id=rn.id
+    )
+    care_plans.append(cp2)
+    db.session.add(cp2)
+    db.session.flush()
+    
+    # Interventions for Mary
+    interventions_mary = [
+        NursingIntervention(
+            care_plan_id=cp2.id,
+            patient_id=patients[0].id,
+            intervention_type="assessment",
+            intervention_name="Diabetic foot assessment",
+            description="Inspect feet for lesions, color, temperature. Check pedal pulses, sensation with monofilament. Assess nail condition.",
+            rationale="Diabetes increases risk of foot ulcers and neuropathy",
+            frequency="Weekly",
+            start_date=cp2.start_date,
+            assigned_role="RN",
+            requires_rn=True,
+            priority="routine",
+            expected_outcome="Early detection of foot problems, no ulcers or infections",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        NursingIntervention(
+            care_plan_id=cp2.id,
+            patient_id=patients[0].id,
+            intervention_type="monitoring",
+            intervention_name="CHF symptom monitoring",
+            description="Daily weight, assess for edema, dyspnea, fatigue. Monitor BP. Teach patient signs of exacerbation.",
+            rationale="Early detection of CHF exacerbation prevents hospitalization",
+            frequency="Daily",
+            scheduled_times='["09:00"]',
+            start_date=cp2.start_date,
+            assigned_role="RN",
+            requires_rn=False,
+            can_delegate=True,
+            priority="routine",
+            expected_outcome="Weight stable +/- 2 lbs, no increase in edema/dyspnea",
+            status="active",
+            created_by_user_id=rn.id
+        ),
+        NursingIntervention(
+            care_plan_id=cp2.id,
+            patient_id=patients[0].id,
+            intervention_type="education",
+            intervention_name="Diabetes self-management education",
+            description="Review blood glucose monitoring, insulin administration technique, hypoglycemia recognition, dietary guidelines.",
+            rationale="Patient education improves disease self-management and outcomes",
+            frequency="Weekly",
+            start_date=cp2.start_date,
+            assigned_role="RN",
+            requires_rn=True,
+            priority="routine",
+            expected_outcome="Patient demonstrates proper technique, verbalizes understanding",
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(interventions_mary)
+    
+    # Orders for Mary
+    orders_mary = [
+        PhysicianOrder(
+            care_plan_id=cp2.id,
+            patient_id=patients[0].id,
+            order_type="diagnostic",
+            order_text="HbA1c every 3 months, fasting lipid panel every 6 months",
+            ordering_physician="Dr. James Chen",
+            order_date=datetime.now() - timedelta(days=60),
+            start_date=cp2.start_date,
+            verification_status="verified",
+            verified_by_user_id=rn.id,
+            verified_at=datetime.now() - timedelta(days=60),
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(orders_mary)
+    
+    # Tasks for Mary
+    tasks_mary = [
+        AssistanceTask(
+            care_plan_id=cp2.id,
+            patient_id=patients[0].id,
+            task_category="safety",
+            task_name="Fall prevention monitoring",
+            description="Ensure walker within reach, clear pathways, adequate lighting. Remind to use walker at all times.",
+            assistance_level="supervision",
+            frequency="Daily",
+            start_date=cp2.start_date,
+            assigned_role="HHA",
+            priority="routine",
+            safety_precautions="Patient independent but uses walker, monitor for safe ambulation",
+            fall_risk_precautions=True,
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(tasks_mary)
+    
+    # Care Plan 3: Patricia Williams (Post-surgical wound care)
+    cp3 = CarePlan(
+        patient_id=patients[2].id,
+        facility_id=facility.id,
+        plan_name="Post-Surgical Care - Hip Replacement",
+        plan_type="focused",
+        care_goals="Promote surgical incision healing, prevent infection, restore mobility, manage post-op pain",
+        clinical_summary="68yo F status post right total hip replacement 2 weeks ago. Surgical incision healing well. PT ongoing.",
+        status="active",
+        start_date=(datetime.now() - timedelta(days=14)).date(),
+        expected_end_date=(datetime.now() + timedelta(days=46)).date(),
+        next_review_date=(datetime.now() + timedelta(days=7)).date(),
+        primary_nurse_id=rn.id,
+        ordering_physician="Dr. Robert Miller",
+        physician_npi="5555555555",
+        physician_phone="555-0170",
+        created_by_user_id=rn.id
+    )
+    care_plans.append(cp3)
+    db.session.add(cp3)
+    db.session.flush()
+    
+    # Interventions for Patricia
+    interventions_patricia = [
+        NursingIntervention(
+            care_plan_id=cp3.id,
+            patient_id=patients[2].id,
+            intervention_type="wound_care",
+            intervention_name="Surgical incision assessment and care",
+            description="Assess incision for redness, warmth, drainage, dehiscence. Cleanse with NS if needed, apply dry sterile dressing.",
+            rationale="Monitor for signs of surgical site infection",
+            frequency="Every other day",
+            start_date=cp3.start_date,
+            assigned_role="RN",
+            requires_rn=True,
+            priority="urgent",
+            expected_outcome="Incision approximated, no signs of infection, healing progressing",
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(interventions_patricia)
+    
+    # Orders for Patricia
+    orders_patricia = [
+        PhysicianOrder(
+            care_plan_id=cp3.id,
+            patient_id=patients[2].id,
+            order_type="therapy",
+            order_text="Physical therapy 3x weekly for gait training, strengthening, hip precautions education",
+            ordering_physician="Dr. Robert Miller",
+            order_date=datetime.now() - timedelta(days=14),
+            start_date=cp3.start_date,
+            end_date=(datetime.now() + timedelta(days=46)).date(),
+            frequency="3x weekly",
+            verification_status="verified",
+            verified_by_user_id=rn.id,
+            verified_at=datetime.now() - timedelta(days=14),
+            status="active",
+            created_by_user_id=rn.id
+        )
+    ]
+    db.session.add_all(orders_patricia)
+    
+    db.session.commit()
+    print(f"✅ Created {len(care_plans)} care plans with interventions, orders, and tasks")
+    return care_plans
+
+
 def print_summary(org, facility, users, patients):
     """Print summary of seed data."""
     print("\n" + "="*60)
@@ -1245,6 +1668,10 @@ def print_summary(org, facility, users, patients):
     print(f"   MAR Records: {MedicationAdministration.query.count()} (PERMANENT LEGAL RECORD)")
     print(f"   ADR Alerts: {ADRAlert.query.count()}")
     print(f"   Reconciliations: {MedicationReconciliation.query.count()}")
+    print(f"   Care Plans: {CarePlan.query.count()}")
+    print(f"   Nursing Interventions: {NursingIntervention.query.count()}")
+    print(f"   Physician Orders: {PhysicianOrder.query.count()}")
+    print(f"   Assistance Tasks: {AssistanceTask.query.count()}")
     
     print(f"\n🔐 Login Credentials (all passwords: 'password123'):")
     for user in users:
@@ -1296,6 +1723,7 @@ def main():
         
         observation, adr_alert = seed_adr_scenario(patients, rn, medications)
         reconciliation, discrepancies = seed_reconciliation_scenario(patients, rn)
+        care_plans = seed_care_plans(patients, users, facility1)
         
         # Print summary
         print_summary(org, facility1, [rn, lpn, pharmacist, admin], patients)

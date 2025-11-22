@@ -63,6 +63,7 @@ export default function Layout({ children }: LayoutProps) {
     { label: 'Dashboard', path: '/dashboard' },
     { label: 'Patients', path: '/patients' },
     { label: 'MAR', path: '/mar' },
+    { label: 'Care Plans', path: '/care-plans' },
     { label: 'Overdue', path: '/overdue' },
     { label: 'ADR Alerts', path: '/adr' },
   ]
