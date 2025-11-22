@@ -185,14 +185,14 @@ export default function ADRAlerts() {
           </Button>
         )}
       </Box>
-        <Alert severity="info" sx={{ mt: 2 }}>
-          <Typography variant="body2">
-            <strong>For everyone involved in patient care:</strong> These alerts help nurses, caregivers, and family members 
-            know what symptoms or changes to watch for with each medication. If you notice any of these signs, 
-            notify the nurse or healthcare provider immediately.
-          </Typography>
-        </Alert>
-      </Box>
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <Typography variant="body2">
+          <strong>For everyone involved in patient care:</strong> These alerts help nurses, caregivers, and family members 
+          know what symptoms or changes to watch for with each medication. If you notice any of these signs, 
+          notify the nurse or healthcare provider immediately.
+        </Typography>
+      </Alert>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>

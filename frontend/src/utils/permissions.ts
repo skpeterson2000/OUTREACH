@@ -126,3 +126,61 @@ export const canAcknowledgeADRAlerts = (userRole?: string): boolean => {
   // Licensed and delegated medication administrators can acknowledge
   return MEDICATION_ADMINISTRATION_ROLES.includes(userRole as UserRole)
 }
+
+/**
+ * Check if user can create and edit care plans
+ * Care plans require RN assessment and clinical judgment
+ */
+export const canManageCarePlans = (userRole?: string): boolean => {
+  if (!userRole) return false
+  return userRole === 'RN' || userRole === 'Admin'
+}
+
+/**
+ * Check if user can view care plans
+ * All clinical staff need to see care plan for patient care
+ */
+export const canViewCarePlans = (userRole?: string): boolean => {
+  if (!userRole) return false
+  return CLINICAL_VIEW_ROLES.includes(userRole as UserRole)
+}
+
+/**
+ * Check if user can complete nursing interventions
+ * Based on intervention requirements and user role
+ */
+export const canCompleteNursingIntervention = (userRole?: string, requiresRN: boolean = false): boolean => {
+  if (!userRole) return false
+  if (requiresRN) {
+    return userRole === 'RN' || userRole === 'Admin'
+  }
+  // LPN can complete most interventions except those requiring RN
+  return LICENSED_ROLES.includes(userRole as UserRole)
+}
+
+/**
+ * Check if user can complete assistance tasks (ADLs, etc.)
+ * CNAs, HHAs, TMAs can complete tasks assigned to their role
+ */
+export const canCompleteAssistanceTask = (userRole?: string): boolean => {
+  if (!userRole) return false
+  return ['RN', 'LPN', 'CNA', 'HHA', 'TMA', 'Admin'].includes(userRole as UserRole)
+}
+
+/**
+ * Check if user can verify physician orders
+ * Only licensed nurses can verify orders
+ */
+export const canVerifyPhysicianOrders = (userRole?: string): boolean => {
+  if (!userRole) return false
+  return userRole === 'RN' || userRole === 'LPN' || userRole === 'Admin'
+}
+
+/**
+ * Check if user can document care plan activities
+ * All clinical staff document their work
+ */
+export const canDocumentCarePlan = (userRole?: string): boolean => {
+  if (!userRole) return false
+  return CLINICAL_VIEW_ROLES.includes(userRole as UserRole)
+}

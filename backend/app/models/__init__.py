@@ -26,6 +26,15 @@ from app.models.patient_safety_alerts import (
 from app.models.wound import WoundAssessment
 # from app.models.specialty_assessment import SpecialtyAssessment  # Commented out due to syntax errors
 from app.models.audit_log import AuditLog
+from app.models.care_plan import (
+    CarePlan,
+    NursingIntervention,
+    PhysicianOrder,
+    AssistanceTask,
+    InterventionCompletion,
+    OrderCompletion,
+    TaskCompletion
+)
 
 __all__ = [
     'Organization',
@@ -53,5 +62,12 @@ __all__ = [
     'VitalSigns',
     'WoundAssessment',
     # 'SpecialtyAssessment',  # Commented out due to syntax errors
-    'AuditLog'
+    'AuditLog',
+    'CarePlan',
+    'NursingIntervention',
+    'PhysicianOrder',
+    'AssistanceTask',
+    'InterventionCompletion',
+    'OrderCompletion',
+    'TaskCompletion'
 ]

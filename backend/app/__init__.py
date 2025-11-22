@@ -156,7 +156,7 @@ def create_app(config_name=None):
         return response
     
     # Register blueprints
-    from app.routes import auth, patients, medications, assessments, visits, users, caregiver_support, organizations, adr_alerts, reconciliation, pharmacist
+    from app.routes import auth, patients, medications, assessments, visits, users, caregiver_support, organizations, adr_alerts, reconciliation, pharmacist, care_plans
     
     app.register_blueprint(auth.bp)
     app.register_blueprint(patients.bp)
@@ -169,6 +169,7 @@ def create_app(config_name=None):
     app.register_blueprint(adr_alerts.bp)
     app.register_blueprint(reconciliation.bp)
     app.register_blueprint(pharmacist.bp)
+    app.register_blueprint(care_plans.bp)
     
     app.logger.info("All routes registered successfully")
     
