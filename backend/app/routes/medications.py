@@ -9,6 +9,10 @@ from app.models import (
     AuditLog
 )
 from app.utils.permissions import require_role
+from app.utils.logging import (
+    log_api_request, log_user_action, log_medication_administration,
+    app_logger
+)
 
 bp = Blueprint('medications', __name__, url_prefix='/api')
 
@@ -279,6 +283,7 @@ def get_medication_adr_alerts(medication_id):
 @bp.route('/medications/<int:medication_id>/administer', methods=['POST'])
 @jwt_required()
 @require_role(['RN', 'LPN', 'TMA', 'Admin'])  # TMA can also administer
+@log_api_request
 def administer_medication(medication_id):
     """
     Document medication administration.
@@ -305,9 +310,13 @@ def administer_medication(medication_id):
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     
+    app_logger.info(f"🏥 MEDICATION ADMINISTRATION INITIATED | User: {user.username} ({user.role}) | Medication ID: {medication_id}")
+    
     # Get medication and verify access
     medication = Medication.query.get_or_404(medication_id)
     patient = Patient.query.get(medication.patient_id)
+    
+    app_logger.info(f"   📋 Patient: {patient.first_name} {patient.last_name} (ID: {patient.id}) | Medication: {medication.medication_name}")
     
     if patient.facility_id != user.facility_id and user.role != 'Admin':
         return jsonify({'error': 'Access denied'}), 403

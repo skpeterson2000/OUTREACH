@@ -56,8 +56,24 @@ def get_patients():
     
     patients = query.order_by(Patient.last_name, Patient.first_name).all()
     
-    # Basic patient list (not full details)
-    result = [p.to_dict(include_sensitive=False) for p in patients]
+    # Enrich patient data with ADR alert counts
+    from app.models import ADRAlert
+    result = []
+    for patient in patients:
+        patient_dict = patient.to_dict(include_sensitive=False)
+        
+        # Count active ADR alerts for this patient
+        active_alerts = ADRAlert.query.filter_by(
+            patient_id=patient.id,
+            facility_id=user.facility_id
+        ).filter(
+            ADRAlert.status.in_(['NEW', 'ACKNOWLEDGED', 'INVESTIGATING'])
+        ).count()
+        
+        patient_dict['active_adr_alerts_count'] = active_alerts
+        patient_dict['has_unacknowledged_alerts'] = active_alerts > 0
+        
+        result.append(patient_dict)
     
     return jsonify({
         'status': 'success',

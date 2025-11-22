@@ -45,6 +45,8 @@ export interface Patient {
   is_hospice: boolean
   active_medications_count?: number
   fall_risk?: boolean
+  active_adr_alerts_count?: number
+  has_unacknowledged_alerts?: boolean
 }
 
 export interface Medication {

@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material'
 import { patientsApi } from '../services/api'
 import type { Patient } from '../types'
+import { logger } from '../utils/logger'
 
 export default function MAROverview() {
   const navigate = useNavigate()
@@ -34,6 +35,7 @@ export default function MAROverview() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    logger.userAction('MAR Overview page loaded')
     loadPatients()
   }, [])
 
@@ -102,13 +104,17 @@ export default function MAROverview() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={4}>
-          <Card>
+          <Card sx={{ 
+            bgcolor: patients.filter(p => p.has_unacknowledged_alerts).length > 0 ? 'error.light' : 'background.paper',
+            border: patients.filter(p => p.has_unacknowledged_alerts).length > 0 ? '2px solid' : 'none',
+            borderColor: 'error.main'
+          }}>
             <CardContent>
-              <Typography variant="h4" color="warning.main">
-                {patients.filter(p => p.is_hospice).length}
+              <Typography variant="h4" color="error.main">
+                {patients.filter(p => p.has_unacknowledged_alerts).length}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Hospice Patients (Special Considerations)
+              <Typography variant="body2" color="text.secondary" fontWeight="bold">
+                🚨 Patients with ADR Alerts - ACTION REQUIRED
               </Typography>
             </CardContent>
           </Card>
@@ -123,6 +129,7 @@ export default function MAROverview() {
               <TableCell>Patient</TableCell>
               <TableCell>MRN</TableCell>
               <TableCell>Active Medications</TableCell>
+              <TableCell>ADR Alerts</TableCell>
               <TableCell>Special Considerations</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
@@ -138,7 +145,18 @@ export default function MAROverview() {
               </TableRow>
             ) : (
               patients.map((patient) => (
-                <TableRow key={patient.id} hover>
+                <TableRow 
+                  key={patient.id} 
+                  hover
+                  sx={{
+                    bgcolor: patient.has_unacknowledged_alerts ? 'error.light' : 'inherit',
+                    borderLeft: patient.has_unacknowledged_alerts ? '4px solid' : 'none',
+                    borderColor: 'error.main',
+                    '& .MuiTableCell-root': {
+                      bgcolor: patient.has_unacknowledged_alerts ? 'rgba(211, 47, 47, 0.08)' : 'inherit'
+                    }
+                  }}
+                >
                   <TableCell>
                     <Box display="flex" alignItems="center" gap={1}>
                       <PersonIcon fontSize="small" color="action" />
@@ -168,6 +186,26 @@ export default function MAROverview() {
                     />
                   </TableCell>
                   <TableCell>
+                    {patient.has_unacknowledged_alerts ? (
+                      <Chip
+                        icon={<WarningIcon />}
+                        label={`${patient.active_adr_alerts_count || 0} UNACKNOWLEDGED`}
+                        size="small"
+                        color="error"
+                        sx={{ 
+                          fontWeight: 'bold',
+                          animation: 'pulse 2s infinite',
+                          '@keyframes pulse': {
+                            '0%, 100%': { opacity: 1 },
+                            '50%': { opacity: 0.7 }
+                          }
+                        }}
+                      />
+                    ) : (
+                      <Chip label="No Alerts" size="small" color="success" variant="outlined" />
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <Box display="flex" gap={0.5} flexWrap="wrap">
                       {patient.is_hospice && (
                         <Chip label="Hospice" size="small" color="info" />
@@ -184,10 +222,22 @@ export default function MAROverview() {
                     <Button
                       variant="contained"
                       size="small"
-                      startIcon={<MedicationIcon />}
-                      onClick={() => navigate(`/patients/${patient.id}/mar`)}
+                      color={patient.has_unacknowledged_alerts ? 'error' : 'primary'}
+                      startIcon={patient.has_unacknowledged_alerts ? <WarningIcon /> : <MedicationIcon />}
+                      onClick={() => {
+                        logger.userAction('Opening MAR from overview', { 
+                          patientId: patient.id, 
+                          patientName: patient.full_name,
+                          hasAlerts: patient.has_unacknowledged_alerts,
+                          alertCount: patient.active_adr_alerts_count 
+                        })
+                        navigate(`/patients/${patient.id}/mar`)
+                      }}
+                      sx={{
+                        fontWeight: patient.has_unacknowledged_alerts ? 'bold' : 'normal'
+                      }}
                     >
-                      Open MAR
+                      {patient.has_unacknowledged_alerts ? 'REVIEW ALERTS' : 'Open MAR'}
                     </Button>
                   </TableCell>
                 </TableRow>

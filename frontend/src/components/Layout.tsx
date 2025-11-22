@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Box,
@@ -14,6 +14,7 @@ import {
 import {
   Menu as MenuIcon,
   Person as PersonIcon,
+  Lock as LockIcon,
 } from '@mui/icons-material'
 import { useAuthStore } from '../store/authStore'
 import { useState } from 'react'
@@ -25,8 +26,21 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout } = useAuthStore()
+  const { user, logout, lock } = useAuthStore()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+
+  // Keyboard shortcut: Ctrl+L to lock
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+        e.preventDefault()
+        handleLockScreen()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [location])
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
@@ -34,6 +48,10 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleClose = () => {
     setAnchorEl(null)
+  }
+
+  const handleLockScreen = () => {
+    lock(location.pathname + location.search)
   }
 
   const handleLogout = () => {
@@ -81,6 +99,14 @@ export default function Layout({ children }: LayoutProps) {
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
               {user?.full_name} ({user?.role})
             </Typography>
+            <IconButton
+              size="large"
+              onClick={handleLockScreen}
+              color="inherit"
+              title="Lock Screen (Ctrl+L)"
+            >
+              <LockIcon />
+            </IconButton>
             <IconButton
               size="large"
               onClick={handleMenu}

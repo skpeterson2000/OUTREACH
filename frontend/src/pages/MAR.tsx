@@ -44,6 +44,7 @@ import { Medication, ADRAlert } from '../types'
 import { medicationsApi, adrApi } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { canAdministerMedications, isUnlicensedStaff, canRequestMedicationReorder, isDelegatedMedicationRole } from '../utils/permissions'
+import { logger } from '../utils/logger'
 
 interface MARAdministration {
   id: number
@@ -226,20 +227,39 @@ export default function MAR() {
   }
 
   const handleAdministerClick = async (med: MARMedication) => {
+    logger.medicationFlow('STEP 1: Administer button clicked', {
+      medication: med.medication_name,
+      medicationId: med.id,
+      patientId,
+      isPRN: med.is_prn
+    })
+    
     setSelectedMed(med)
     
     // CRITICAL SAFETY CHECK: Verify ADR alert acknowledgments before allowing administration
+    logger.medicationFlow('STEP 2: Checking ADR alert acknowledgments')
     try {
       const checkResponse = await adrApi.checkPatientAcknowledgments(patientId)
+      logger.medicationFlow('STEP 3: ADR check completed', {
+        canAdminister: checkResponse.data.can_administer,
+        result: checkResponse.data
+      })
       console.log('🔒 ADR Check Result:', checkResponse.data)
       
       if (!checkResponse.data.can_administer) {
         // BLOCKED: Alerts not acknowledged or expired
+        logger.medicationFlow('STEP 4: BLOCKED - ADR alerts not acknowledged', {
+          unacknowledgedAlerts: checkResponse.data.unacknowledged_alerts?.length || 0,
+          expiredAcknowledgments: checkResponse.data.expired_acknowledgments?.length || 0
+        })
         setAdrCheckResult(checkResponse.data)
         setAdrBlockDialogOpen(true)
         return // Do not proceed to administration
       }
+      
+      logger.medicationFlow('STEP 4: ADR check passed - continuing')
     } catch (error: any) {
+      logger.error('MEDICATION_FLOW', 'ADR check failed', error)
       console.error('❌ ADR check failed:', error)
       alert(`⚠️ Safety check failed: ${error.response?.data?.message || 'Unable to verify alert acknowledgments'}`)
       return
@@ -247,8 +267,11 @@ export default function MAR() {
 
     // Check if this medication requires pre-administration vital signs
     const requiresVitals = requiresPreAdministrationVitals(med)
+    logger.medicationFlow('STEP 5: Checking if vitals required', { requiresVitals, medication: med.medication_name })
+    
     if (requiresVitals) {
       // Show vitals dialog first
+      logger.medicationFlow('STEP 6: Opening vitals dialog')
       setVitalsForm({
         heart_rate: '',
         blood_pressure_systolic: '',
@@ -265,6 +288,7 @@ export default function MAR() {
     }
     
     // Proceed to normal administration dialog
+    logger.medicationFlow('STEP 6: Opening administration dialog (no vitals required)')
     proceedToAdministration(med)
   }
 
@@ -405,6 +429,12 @@ export default function MAR() {
   const handleAdministerSubmit = async () => {
     if (!selectedMed) return
     
+    logger.medicationFlow('STEP 7: Administration form submitted', {
+      medication: selectedMed.medication_name,
+      status: adminForm.status,
+      dose: adminForm.dose_given
+    })
+    
     // Check if sliding scale insulin and verify dose
     const isSlidingScale = selectedMed.medication_name?.toLowerCase().includes('insulin') && 
                           (selectedMed.instructions?.toLowerCase().includes('sliding scale') || 
@@ -412,16 +442,24 @@ export default function MAR() {
     
     if (isSlidingScale) {
       if (!adminForm.blood_glucose) {
+        logger.warn('MEDICATION_FLOW', 'Missing blood glucose for sliding scale insulin')
         alert('⚠️ Blood glucose reading is required for sliding scale insulin')
         return
       }
       if (!adminForm.dose_verified) {
+        logger.warn('MEDICATION_FLOW', 'Dose not verified for sliding scale insulin')
         alert('⚠️ You must verify the calculated dose before administering')
         return
       }
     }
 
     try {
+      logger.medicationFlow('STEP 8: Calling API to administer medication', {
+        patientId,
+        medicationId: selectedMed.id,
+        formData: adminForm
+      })
+      
       await medicationsApi.administerMedication(patientId, selectedMed.id, {
         ...adminForm,
         scheduled_time: new Date().toISOString(),
@@ -429,10 +467,17 @@ export default function MAR() {
           ? `BG: ${adminForm.blood_glucose} mg/dL. ${adminForm.notes || ''}`.trim()
           : adminForm.notes,
       })
+      
+      logger.medicationFlow('STEP 9: Administration recorded successfully')
       setAdminDialogOpen(false)
       loadMARData() // Refresh
-    } catch (error) {
+    } catch (error: any) {
+      logger.error('MEDICATION_FLOW', 'Failed to record administration', {
+        error: error.response?.data || error.message,
+        medicationId: selectedMed.id
+      })
       console.error('Failed to record administration:', error)
+      alert(`❌ Failed to record administration: ${error.response?.data?.error || error.message}`)
     }
   }
 
