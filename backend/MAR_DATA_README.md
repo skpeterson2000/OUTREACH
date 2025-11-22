@@ -14,6 +14,7 @@ The MAR (Medication Administration Record) is a **legal document** that records 
 **Your database currently contains 848 MAR records spanning 59 days** (Sept 23, 2025 - Nov 21, 2025).
 
 This data:
+
 - Is properly stored in the `medication_administration` table
 - Will survive application restarts
 - Will survive backend updates
@@ -22,6 +23,7 @@ This data:
 ## MAR Data Structure
 
 Each record includes:
+
 - **Scheduled time** - When medication was scheduled
 - **Administration time** - When actually given
 - **Status** - Given, held, refused, omitted
@@ -34,6 +36,7 @@ Each record includes:
 ## Seeding MAR Data
 
 ### Quick Overview
+
 - `seed_data.py` creates **7 days** of recent administrations
 - `seed_mar_history.py` creates **~60 days** of comprehensive history (from admission date)
 
@@ -93,20 +96,25 @@ EOF
 ## Production Considerations
 
 ### Backup Strategy
+
 In production, MAR data should be:
+
 - Backed up daily (minimum)
 - Retained for 7+ years (federal requirement)
 - Stored in write-once, read-many format
 - Protected from deletion/modification
 
 ### Access Controls
+
 - Only authorized clinical staff can create records
 - No user can delete records (not even admin)
 - Corrections are additions, not edits (audit trail)
 - All access logged
 
 ### Compliance
+
 MAR records are required for:
+
 - Joint Commission accreditation
 - State licensing
 - Medicare/Medicaid reimbursement
@@ -127,11 +135,13 @@ If you're not seeing MAR data, check:
 ## Development vs Production
 
 ### Development (Current)
+
 - OK to delete MAR data for testing
 - Seed scripts recreate realistic data
 - Can reset to clean state
 
 ### Production (Future)
+
 - **NEVER delete MAR data**
 - Seed scripts disabled
 - Only real patient administrations
@@ -147,6 +157,7 @@ If you're not seeing MAR data, check:
 ## Questions?
 
 If MAR data appears missing, **check first** before recreating:
+
 ```bash
 # Quick check
 cd /home/pc/OUTREACH/backend
