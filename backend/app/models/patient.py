@@ -130,6 +130,8 @@ class Patient(db.Model):
             'gender': self.gender,
             'status': self.status,
             'fall_risk': self.fall_risk,
+            'fall_risk_score': self.fall_risk_score,
+            'braden_score': self.braden_score,
             'is_hospice': self.is_hospice,
             'code_status': self.code_status,
             'comfort_measures_only': self.comfort_measures_only,
@@ -137,6 +139,8 @@ class Patient(db.Model):
             'primary_diagnosis': self.primary_diagnosis,
             'secondary_diagnoses': self.secondary_diagnoses,
             'allergies': self.allergies,
+            'active_medications_count': self.medications.filter_by(status='active').count(),
+            'has_unacknowledged_alerts': False,  # Will be populated by route if needed
             'created_at': self.created_at.isoformat()
         }
         
