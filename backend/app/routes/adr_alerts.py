@@ -785,3 +785,70 @@ def resolve_alert(alert_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/adr-alerts/reset-acknowledgments', methods=['POST'])
+@jwt_required()
+@require_role(['Admin'])
+def reset_all_acknowledgments():
+    """
+    Admin endpoint: Reset all acknowledgments (for testing/training).
+    
+    This will:
+    - Delete all acknowledgments
+    - Set all non-resolved alerts back to NEW status
+    """
+    from app.models import ADRAlertAcknowledgment
+    from flask import current_app
+    import logging
+    
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    current_app.logger.warning(f"🔄 RESET ALL ACKNOWLEDGMENTS | Admin: {user.username}")
+    
+    try:
+        # Count before
+        count_before = ADRAlertAcknowledgment.query.count()
+        
+        # Delete all acknowledgments
+        ADRAlertAcknowledgment.query.delete()
+        
+        # Reset all non-resolved alerts to NEW status
+        alerts = ADRAlert.query.filter(ADRAlert.status != 'RESOLVED').all()
+        for alert in alerts:
+            alert.status = 'NEW'
+            alert.acknowledged_by_user_id = None
+            alert.acknowledged_at = None
+        
+        # Audit log
+        AuditLog.log_action(
+            user=user,
+            action='DELETE',
+            resource_type='ADRAlertAcknowledgment',
+            resource_id=None,
+            patient_id=None,
+            description=f'Reset all acknowledgments ({count_before} deleted)',
+            phi_accessed=False,
+            request=request
+        )
+        
+        db.session.commit()
+        
+        current_app.logger.info(f"   ✅ Reset complete: {count_before} acknowledgments deleted, {len(alerts)} alerts reset")
+        user_logger = logging.getLogger('user_actions')
+        user_logger.info(f"SYSTEM RESET | Admin: {user.username} | Deleted {count_before} acknowledgments | Reset {len(alerts)} alerts")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Reset complete: {count_before} acknowledgments deleted',
+            'stats': {
+                'acknowledgments_deleted': count_before,
+                'alerts_reset': len(alerts)
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"   ❌ Reset failed: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500

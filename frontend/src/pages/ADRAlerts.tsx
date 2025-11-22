@@ -148,15 +148,43 @@ export default function ADRAlerts() {
     )
   }
 
+  const handleResetAcknowledgments = async () => {
+    if (!confirm('⚠️ This will reset ALL acknowledgments and return all alerts to NEW status.\n\nAll staff will need to re-acknowledge alerts.\n\nContinue?')) {
+      return
+    }
+    
+    try {
+      await adrApi.resetAcknowledgments()
+      alert('✅ All acknowledgments have been reset')
+      loadAlerts()
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to reset acknowledgments')
+    }
+  }
+
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Medication Safety Alerts
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Important: What to watch for when giving or seeing someone take medications
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Medication Safety Alerts
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Important: What to watch for when giving or seeing someone take medications
+          </Typography>
+        </Box>
+        {user?.role === 'Admin' && (
+          <Button
+            variant="outlined"
+            color="warning"
+            size="small"
+            onClick={handleResetAcknowledgments}
+            sx={{ mt: 1 }}
+          >
+            Reset All Acknowledgments (Admin)
+          </Button>
+        )}
+      </Box>
         <Alert severity="info" sx={{ mt: 2 }}>
           <Typography variant="body2">
             <strong>For everyone involved in patient care:</strong> These alerts help nurses, caregivers, and family members 

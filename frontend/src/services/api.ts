@@ -150,6 +150,9 @@ export const adrApi = {
   // Proactive guidance for medication pass
   getMedicationRisks: (medicationId: number) =>
     api.get<ApiResponse<any>>(`/medications/${medicationId}/adr-risks`),
+  // Admin: Reset all acknowledgments (for testing/training)
+  resetAcknowledgments: () =>
+    api.post('/adr-alerts/reset-acknowledgments'),
 }
 
 // Medication Reconciliation
