@@ -385,28 +385,28 @@ def acknowledge_alert(alert_id):
     }
     """
     from app.models import ADRAlertAcknowledgment
+    from flask import current_app
+    import logging
     
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     
-    print(f"🔔 ACKNOWLEDGE ALERT {alert_id}")
-    print(f"   User: {user.first_name} {user.last_name} ({user.role})")
+    current_app.logger.info(f"🔔 ADR ALERT ACKNOWLEDGMENT | Alert #{alert_id} | User: {user.username} ({user.role})")
     
     alert = ADRAlert.query.get_or_404(alert_id)
-    print(f"   Alert Status: {alert.status}")
-    print(f"   Alert Facility: {alert.facility_id}, User Facility: {user.facility_id}")
+    current_app.logger.info(f"   Alert: {alert.alert_type} - {alert.severity} | Status: {alert.status} | Patient: {alert.patient_id}")
     
     # Check access
     if alert.facility_id != user.facility_id and user.role != 'Admin':
-        print("   ❌ Access denied - facility mismatch")
+        current_app.logger.warning(f"   ❌ Access denied - facility mismatch")
         return jsonify({'error': 'Access denied'}), 403
     
     if not alert.is_active:
-        print(f"   ❌ Cannot acknowledge - alert not active: {alert.status}")
+        current_app.logger.warning(f"   ❌ Cannot acknowledge - alert not active: {alert.status}")
         return jsonify({'error': f'Alert is not active (status: {alert.status})'}), 400
     
     data = request.get_json() or {}
-    print(f"   Request data: {data}")
+    current_app.logger.info(f"   Acknowledgment action: {data.get('action', 'ACKNOWLEDGED')}")
     
     # Validate required fields
     action = data.get('action', 'ACKNOWLEDGED')
@@ -493,7 +493,9 @@ def acknowledge_alert(alert_id):
         
         db.session.commit()
         
-        print(f"   ✅ Acknowledgment created (expires: {acknowledgment.expires_at})")
+        current_app.logger.info(f"   ✅ ACKNOWLEDGMENT CREATED | ID: {acknowledgment.id} | Expires: {acknowledgment.expires_at.strftime('%Y-%m-%d %H:%M')}")
+        user_logger = logging.getLogger('user_actions')
+        user_logger.info(f"ADR ALERT ACKNOWLEDGED | User: {user.username} | Alert: #{alert_id} | Action: {action} | Patient: {alert.patient_id}")
         
         return jsonify({
             'status': 'success',
@@ -506,7 +508,7 @@ def acknowledge_alert(alert_id):
         
     except Exception as e:
         db.session.rollback()
-        print(f"   ❌ Error: {str(e)}")
+        current_app.logger.error(f"   ❌ ERROR: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

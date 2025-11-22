@@ -306,25 +306,29 @@ def administer_medication(medication_id):
     }
     """
     from app.models import ADRAlert, ADRAlertAcknowledgment
+    from flask import current_app
     
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     
-    app_logger.info(f"🏥 MEDICATION ADMINISTRATION INITIATED | User: {user.username} ({user.role}) | Medication ID: {medication_id}")
+    current_app.logger.info(f"🏥 MEDICATION ADMINISTRATION INITIATED | User: {user.username} ({user.role}) | Medication ID: {medication_id}")
     
     # Get medication and verify access
     medication = Medication.query.get_or_404(medication_id)
     patient = Patient.query.get(medication.patient_id)
     
-    app_logger.info(f"   📋 Patient: {patient.first_name} {patient.last_name} (ID: {patient.id}) | Medication: {medication.medication_name}")
+    current_app.logger.info(f"   📋 Patient: {patient.first_name} {patient.last_name} (ID: {patient.id}) | Medication: {medication.medication_name}")
     
     if patient.facility_id != user.facility_id and user.role != 'Admin':
         return jsonify({'error': 'Access denied'}), 403
     
     data = request.get_json()
+    current_app.logger.info(f"   📝 Administration request: status={data.get('status')}, dose={data.get('dose_given')}")
     
     # ⚠️ SAFETY CHECK: Verify ADR alert acknowledgments
     if data.get('status') == 'given':  # Only check if actually administering
+        current_app.logger.info(f"   🔒 SAFETY CHECK: Verifying ADR alert acknowledgments for patient {patient.id}")
+        
         # Check for active ADR alerts for this patient
         active_alerts = ADRAlert.query.filter_by(
             patient_id=patient.id,
@@ -332,6 +336,8 @@ def administer_medication(medication_id):
         ).filter(
             ADRAlert.status.in_(['NEW', 'ACKNOWLEDGED', 'INVESTIGATING'])
         ).all()
+        
+        current_app.logger.info(f"   📊 Found {len(active_alerts)} active ADR alerts")
         
         if active_alerts:
             # Check if user has valid acknowledgments for ALL active alerts
@@ -362,6 +368,7 @@ def administer_medication(medication_id):
             
             # If there are medications on hold, block administration
             if held_meds:
+                current_app.logger.warning(f"   ⛔ BLOCKED: Medication on hold - {len(held_meds)} hold(s)")
                 return jsonify({
                     'error': 'MEDICATION_ON_HOLD',
                     'message': 'This medication is on hold due to ADR alert',
@@ -371,6 +378,7 @@ def administer_medication(medication_id):
             
             # If there are unacknowledged or expired alerts, block administration
             if unacknowledged or expired:
+                current_app.logger.warning(f"   ⛔ BLOCKED: Unacknowledged ({len(unacknowledged)}) or expired ({len(expired)}) alerts")
                 return jsonify({
                     'error': 'ADR_ALERTS_NOT_ACKNOWLEDGED',
                     'message': 'You must acknowledge all active ADR alerts before administering medications to this patient',
@@ -379,6 +387,8 @@ def administer_medication(medication_id):
                     'total_active_alerts': len(active_alerts),
                     'action_required': 'Review and acknowledge each ADR alert before proceeding'
                 }), 403
+            
+            current_app.logger.info(f"   ✅ SAFETY CHECK PASSED: All alerts acknowledged")
     
     # Validate required fields
     if not data.get('scheduled_time'):
@@ -437,6 +447,10 @@ def administer_medication(medication_id):
         
         db.session.commit()
         
+        current_app.logger.info(f"   ✅ MEDICATION ADMINISTRATION RECORDED | ID: {administration.id} | Status: {data['status']}")
+        user_logger = logging.getLogger('user_actions')
+        user_logger.info(f"MEDICATION ADMINISTERED | User: {user.username} | Patient: {patient.first_name} {patient.last_name} | Med: {medication.medication_name} | Status: {data['status']}")
+        
         return jsonify({
             'status': 'success',
             'data': administration.to_dict(),
@@ -445,9 +459,11 @@ def administer_medication(medication_id):
         
     except ValueError as e:
         db.session.rollback()
+        current_app.logger.error(f"   ❌ ERROR: Invalid datetime - {str(e)}")
         return jsonify({'error': f'Invalid datetime format: {str(e)}'}), 400
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"   ❌ ERROR: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
